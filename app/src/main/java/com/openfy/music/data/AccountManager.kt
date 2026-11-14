@@ -58,9 +58,11 @@ object AccountManager {
             AccountProvider.SPOTIFY -> {
                 if (SpotifyClient.isConnected) {
                     SpotifyClient.getUserPlaylists()
-                } else emptyList()
+                } else YouTubeAudioResolver.getCuratedPlaylists()
             }
-            AccountProvider.YOUTUBE, AccountProvider.GUEST -> emptyList()
+            AccountProvider.YOUTUBE, AccountProvider.GUEST -> {
+                YouTubeAudioResolver.getCuratedPlaylists()
+            }
         }
     }
 

@@ -3,6 +3,7 @@ package com.openfy.music.data.remote
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.openfy.music.data.model.Artist
+import com.openfy.music.data.model.Playlist
 import com.openfy.music.data.model.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -177,6 +178,15 @@ object YouTubeAudioResolver {
             Track("0VwhorQBdMc", "Sunflower", listOf(Artist(name = "Post Malone"), Artist(name = "Swae Lee")), durationSeconds = 158, coverUrl = "https://i.scdn.co/image/ab67616d0000b273e2e352d89826aef6dbd5ff8f"),
             Track("nfWlot6h_JM", "Shake It Off", listOf(Artist(name = "Taylor Swift")), durationSeconds = 219, coverUrl = "https://i.scdn.co/image/ab67616d0000b273904445d70d04eb34d6de7970"),
             Track("YQHsXMglC9A", "Hello", listOf(Artist(name = "Adele")), durationSeconds = 295, coverUrl = "https://i.scdn.co/image/ab67616d0000b27329df04c45b59f77f3050c266")
+        )
+    }
+
+    fun getCuratedPlaylists(): List<Playlist> {
+        return listOf(
+            Playlist("RDCLAK5uy_kmPRjFGN7YstCHfpYq2KRxTyCeoogiqcU", "Today's Top Hits", "The hottest tracks on YouTube Music & Spotify.", "https://i.scdn.co/image/ab67706f00000002724554f35da514fa501739a0", 50, "youtube"),
+            Playlist("RDCLAK5uy_n9Fbdw7e6ap-98_A-8JYMwW6viui0iaw4", "All Out 2020s", "The biggest hits of the decade so far.", "https://i.scdn.co/image/ab67706f00000002b55b6074da1d43715fc16d6d", 45, "youtube"),
+            Playlist("RDCLAK5uy_kL6A4y4P3x8o0R5X5o3T0g2J1r9c6p5E", "RapCaviar", "New hip-hop and rap releases from top artists.", "https://i.scdn.co/image/ab67706f00000002364c0f135b5420d20d75a5c6", 60, "youtube"),
+            Playlist("RDCLAK5uy_l7T5_9_Gz2n7W8i3P9b4E2r1o6c8y5Q", "Pop Rising", "The hits of tomorrow are here today.", "https://i.scdn.co/image/ab67706f000000029b35b6f3c051912a7732ad51", 40, "youtube")
         )
     }
 

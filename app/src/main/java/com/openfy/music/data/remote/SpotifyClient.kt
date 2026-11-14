@@ -150,6 +150,56 @@ object SpotifyClient {
         playlists
     }
 
+    suspend fun getPlaylistTracks(playlistId: String, limit: Int = 50): List<Track> = withContext(Dispatchers.IO) {
+        val token = accessToken ?: return@withContext emptyList()
+        val tracks = mutableListOf<Track>()
+        try {
+            val req = Request.Builder()
+                .url("https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=$limit")
+                .header("Authorization", "Bearer $token")
+                .build()
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val json = gson.fromJson(resp.body?.string(), JsonObject::class.java)
+                val items = json.getAsJsonArray("items") ?: return@withContext emptyList()
+                for (item in items) {
+                    val t = item.asJsonObject.getAsJsonObject("track") ?: continue
+                    val id = t.get("id")?.asString ?: continue
+                    val title = t.get("name")?.asString ?: "Unknown"
+
+                    val artistsList = mutableListOf<Artist>()
+                    t.getAsJsonArray("artists")?.forEach {
+                        val a = it.asJsonObject
+                        artistsList.add(Artist(a.get("id")?.asString, a.get("name")?.asString ?: ""))
+                    }
+
+                    val albumObj = t.getAsJsonObject("album")
+                    val albumName = albumObj?.get("name")?.asString ?: ""
+                    val albumImages = albumObj?.getAsJsonArray("images")
+                    val cover = albumImages?.firstOrNull()?.asJsonObject?.get("url")?.asString
+                    val album = Album(name = albumName, coverUrl = cover)
+                    val duration = (t.get("duration_ms")?.asInt ?: 0) / 1000
+
+                    tracks.add(
+                        Track(
+                            id = id,
+                            title = title,
+                            artists = artistsList,
+                            album = album,
+                            durationSeconds = duration,
+                            coverUrl = cover,
+                            source = "spotify",
+                            spotifyId = id
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        tracks
+    }
+
     suspend fun saveTrack(track: Track): Boolean = withContext(Dispatchers.IO) {
         val token = accessToken ?: return@withContext false
         var spotifyId = track.spotifyId
