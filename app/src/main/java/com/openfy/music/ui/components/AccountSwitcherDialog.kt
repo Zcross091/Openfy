@@ -159,9 +159,15 @@ fun AccountSwitcherDialog(
                                     }
                                 } else {
                                     Text(
-                                        text = "Paste Spotify access token to sync your library:",
+                                        text = "Sync with your Spotify Account (Google sign-in or Email):",
                                         color = SpotifySubdued,
                                         fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Paste your Spotify OAuth token (from accounts.spotify.com) below:",
+                                        color = Color.Gray,
+                                        fontSize = 10.sp
                                     )
                                     Spacer(modifier = Modifier.height(6.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -198,14 +204,14 @@ fun AccountSwitcherDialog(
                         AccountProvider.YOUTUBE -> {
                             Column {
                                 Text(
-                                    text = "YouTube Music Account",
+                                    text = "YouTube Music Account (Google)",
                                     color = White,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Using YouTube Music audio engine. All songs you like with the Heart icon will be added to your YouTube Liked Music!",
+                                    text = "Connected via RVX YouTube Music engine. Syncs songs using your Google account / Gmail. All songs you like with the Heart icon will be saved to your active YouTube Liked Music library!",
                                     color = SpotifySubdued,
                                     fontSize = 11.sp
                                 )
