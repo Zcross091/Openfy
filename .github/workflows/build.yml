@@ -1,0 +1,91 @@
+name: Build & Release Openfy Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Package Signed APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Ensure Gradle Wrapper is Executable
+        run: chmod +x gradlew
+
+      - name: Configure Keystore Signature
+        run: |
+          if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "Using custom keystore from repository secrets..."
+            echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > app/keystore/openfy-release.jks
+          else
+            echo "Using persistent Openfy release keystore (ensures seamless app updates across builds)..."
+          fi
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Prepare Release Artifacts
+        run: |
+          mkdir -p release-artifacts
+          cp app/build/outputs/apk/release/app-release.apk release-artifacts/Openfy.apk
+          cp app/build/outputs/apk/release/app-release.apk release-artifacts/Openfy-${{ github.sha }}.apk
+          echo "Release APK SHA256:"
+          sha256sum release-artifacts/Openfy.apk
+
+      - name: Upload APK Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Openfy-Android-APK
+          path: release-artifacts/Openfy.apk
+          retention-days: 30
+
+      - name: Release Every Newest APK as Latest
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Openfy Latest Release (Auto-Build)"
+          body: |
+            ### 🎵 Openfy Android - Automated Build
+            
+            This release is automatically generated on every new commit to ensure you always have the freshest build.
+            
+            * **Commit:** `${{ github.sha }}`
+            * **Message:** `${{ github.event.head_commit.message }}`
+            * **Persistent Signature:** Signed with the official Openfy release key (v1, v2, v3, v4 schemes). You can update this APK directly over older versions without uninstalling!
+            * **Logo & Assets:** Full-resolution icon and adaptive launcher included.
+            
+            #### 📥 Download:
+            Download **`Openfy.apk`** below and install it directly on your Android phone!
+          draft: false
+          prerelease: false
+          make_latest: true
+          files: |
+            release-artifacts/Openfy.apk
+            release-artifacts/Openfy-${{ github.sha }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

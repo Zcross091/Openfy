@@ -16,9 +16,10 @@ captures/
 *.aab
 *.dex
 
-# Keystores
+# Keystores (allow the default openfy-release.jks so CI can always build signed APKs)
 *.jks
 *.keystore
+!app/keystore/openfy-release.jks
 
 # Node & Python leftovers (if any)
 __pycache__/

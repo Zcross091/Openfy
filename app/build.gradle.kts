@@ -18,15 +18,35 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = project.findProperty("OPENFY_KEYSTORE_FILE") as? String ?: "keystore/openfy-release.jks"
+            storeFile = file(keystorePath)
+            storePassword = project.findProperty("OPENFY_KEYSTORE_PASSWORD") as? String ?: "openfymusic"
+            keyAlias = project.findProperty("OPENFY_KEY_ALIAS") as? String ?: "openfy"
+            keyPassword = project.findProperty("OPENFY_KEY_PASSWORD") as? String ?: "openfymusic"
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+            enableV4Signing = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+        debug {
+            // Also sign debug builds with the persistent release key so updates are seamless
+            signingConfig = signingConfigs.getByName("release")
+        }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
