@@ -1,7 +1,7 @@
 # Openfy 🎵 (Android)
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Zcross091/Openfy/main/app/src/main/res/drawable/ic_launcher_foreground.xml" alt="Openfy Logo" width="120" onerror="this.style.display='none'"/>
+  <img src="https://raw.githubusercontent.com/Zcross091/Openfy/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" alt="Openfy Logo" width="128"/>
 </p>
 
 <p align="center">
@@ -9,13 +9,34 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Zcross091/Openfy/actions/workflows/build.yml">
+    <img src="https://github.com/Zcross091/Openfy/actions/workflows/build.yml/badge.svg" alt="Build Status"/>
+  </a>
+  <a href="https://github.com/Zcross091/Openfy/releases/tag/latest">
+    <img src="https://img.shields.io/github/v/release/Zcross091/Openfy?label=Latest%20APK&color=1DB954&logo=android" alt="Latest Release"/>
+  </a>
   <img src="https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026--35)-3DDC84?logo=android&logoColor=white" alt="Android"/>
   <img src="https://img.shields.io/badge/Language-Kotlin%202.0.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin"/>
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose"/>
   <img src="https://img.shields.io/badge/Audio-AndroidX%20Media3%20ExoPlayer-FF0000?logo=youtube&logoColor=white" alt="ExoPlayer"/>
-  <img src="https://img.shields.io/badge/Spotify-Mobile%20UI%201%3A1-1DB954?logo=spotify&logoColor=white" alt="Spotify UI"/>
   <img src="https://img.shields.io/badge/Audio-Ad--Free%20Opus%20160k-7c3aed" alt="Ad-Free"/>
 </p>
+
+<p align="center">
+  <a href="https://github.com/Zcross091/Openfy/releases/latest/download/Openfy.apk">
+    <img src="https://img.shields.io/badge/Download-Openfy.apk%20(Direct)-1DB954?style=for-the-badge&logo=android&logoColor=white" alt="Download APK"/>
+  </a>
+</p>
+
+---
+
+## 📥 Download & Install
+
+You can download the latest automated build directly from GitHub Releases:
+* **Direct Download**: [**Download Openfy.apk**](https://github.com/Zcross091/Openfy/releases/latest/download/Openfy.apk)
+* **Latest Release Hub**: [GitHub Releases (Tag: `latest`)](https://github.com/Zcross091/Openfy/releases/tag/latest)
+
+> **In-Place APK Updates Supported**: Every build is signed with a persistent cryptographic release certificate (`SHA-256: 74:E6:5E:24:...`). You can install new APK versions directly on top of previous versions without uninstalling or losing your cached data.
 
 ---
 
