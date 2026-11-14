@@ -1,36 +1,27 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-
-# Node / Frontend
-node_modules/
-dist/
+# Gradle & Android Build outputs
+.gradle/
 build/
-.npm
-*.tsbuildinfo
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+captures/
+.externalNativeBuild
+.cxx
 
-# APKs and Large Binaries (exceeds GitHub 100MB limit)
+# APKs and Bundles (avoids GitHub 100MB file limit)
 *.apk
 *.aab
 *.dex
 
-# Cache & Storage
-cache/
-audio_cache/
-.pytest_cache/
-*.log
+# Keystores
+*.jks
+*.keystore
 
-# OS & IDE
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
+# Node & Python leftovers (if any)
+__pycache__/
+*.pyc
+node_modules/
+dist/
