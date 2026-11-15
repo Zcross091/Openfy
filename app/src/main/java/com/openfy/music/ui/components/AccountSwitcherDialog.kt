@@ -1,5 +1,7 @@
 package com.openfy.music.ui.components
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,14 +11,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,8 +41,16 @@ fun AccountSwitcherDialog(
     onDismiss: () -> Unit
 ) {
     val activeProvider by AccountManager.activeProvider.collectAsState()
+    val spotifyEmail by AccountManager.spotifyEmail.collectAsState()
+    val youtubeEmail by AccountManager.youtubeEmail.collectAsState()
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var tokenInput by remember { mutableStateOf("") }
+
+    var showSpotifyEmailInput by remember { mutableStateOf(false) }
+    var spotifyEmailInput by remember { mutableStateOf("") }
+    var spotifyTokenInput by remember { mutableStateOf("") }
+
+    var youtubeEmailInput by remember { mutableStateOf("") }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -68,10 +80,10 @@ fun AccountSwitcherDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
-                    text = "Openfy lets you log in from your Spotify account or YouTube account (one at a time). When listening, tapping the Heart icon immediately saves that track to your active library!",
+                    text = "Select your active account. Tapping the Heart icon in playback saves songs directly to your active library!",
                     color = SpotifySubdued,
                     fontSize = 12.sp,
                     lineHeight = 16.sp
@@ -79,7 +91,7 @@ fun AccountSwitcherDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Account Selection Tiles
+                // Account Selection Tiles (Spotify, YouTube, Guest)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -87,24 +99,20 @@ fun AccountSwitcherDialog(
                     // Spotify Card
                     AccountTile(
                         title = "Spotify",
-                        subtitle = if (SpotifyClient.isConnected) "Connected" else "Not Linked",
+                        subtitle = if (SpotifyClient.isConnected || AccountManager.isSpotifyConnected) "Connected" else "Not Linked",
                         color = SpotifyGreen,
                         isSelected = activeProvider == AccountProvider.SPOTIFY,
-                        onClick = {
-                            AccountManager.switchAccount(AccountProvider.SPOTIFY)
-                        },
+                        onClick = { AccountManager.switchAccount(AccountProvider.SPOTIFY) },
                         modifier = Modifier.weight(1f)
                     )
 
                     // YouTube Card
                     AccountTile(
                         title = "YouTube",
-                        subtitle = "Active",
+                        subtitle = if (AccountManager.isYouTubeConnected) "Linked" else "Active",
                         color = RvxRed,
                         isSelected = activeProvider == AccountProvider.YOUTUBE,
-                        onClick = {
-                            AccountManager.switchAccount(AccountProvider.YOUTUBE)
-                        },
+                        onClick = { AccountManager.switchAccount(AccountProvider.YOUTUBE) },
                         modifier = Modifier.weight(1f)
                     )
 
@@ -114,87 +122,141 @@ fun AccountSwitcherDialog(
                         subtitle = "Free",
                         color = Color(0xFF888888),
                         isSelected = activeProvider == AccountProvider.GUEST,
-                        onClick = {
-                            AccountManager.switchAccount(AccountProvider.GUEST)
-                        },
+                        onClick = { AccountManager.switchAccount(AccountProvider.GUEST) },
                         modifier = Modifier.weight(1f)
                     )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Active Provider Status Area
+                // Active Provider Login / Management Area
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF101010))
-                        .padding(12.dp)
+                        .background(Color(0xFF141414))
+                        .padding(14.dp)
                 ) {
                     when (activeProvider) {
                         AccountProvider.SPOTIFY -> {
-                            Column {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
-                                    text = "Spotify Account",
+                                    text = "Spotify Account Login",
                                     color = White,
-                                    fontSize = 13.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                if (SpotifyClient.isConnected) {
+
+                                if (SpotifyClient.isConnected || AccountManager.isSpotifyConnected) {
+                                    val displayName = SpotifyClient.userProfile?.displayName ?: spotifyEmail ?: "Spotify User"
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(vertical = 6.dp)
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = SpotifyGreen, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Logged in as $displayName",
+                                            color = White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
                                     Text(
-                                        text = "Logged in. Your Spotify playlists and Liked Songs are active. Tap Heart to save tracks to Spotify!",
+                                        text = "Your Spotify playlists & Liked Songs are active. Heart icon saves tracks to Spotify library.",
                                         color = SpotifySubdued,
                                         fontSize = 11.sp
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     TextButton(
                                         onClick = {
-                                            SpotifyClient.disconnect()
+                                            AccountManager.disconnectSpotify()
                                             AccountManager.switchAccount(AccountProvider.GUEST)
                                         },
                                         colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFF5555))
                                     ) {
-                                        Text("Disconnect", fontSize = 12.sp)
+                                        Text("Disconnect Spotify", fontSize = 12.sp)
                                     }
                                 } else {
                                     Text(
-                                        text = "Sync with your Spotify Account (Google sign-in or Email):",
+                                        text = "Choose how to log into your Spotify account:",
                                         color = SpotifySubdued,
                                         fontSize = 11.sp
                                     )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Paste your Spotify OAuth token (from accounts.spotify.com) below:",
-                                        color = Color.Gray,
-                                        fontSize = 10.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Button 1: Google Login for Spotify
+                                    Button(
+                                        onClick = {
+                                            val spotifyOAuthUrl = "https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com"
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(spotifyOAuthUrl))
+                                            context.startActivity(intent)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242424)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, tint = White, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Log in with Google Account", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Button 2: Email Login for Spotify
+                                    OutlinedButton(
+                                        onClick = { showSpotifyEmailInput = !showSpotifyEmailInput },
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(imageVector = Icons.Default.Email, contentDescription = null, tint = SpotifyGreen, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Log in with Spotify Email / Token", color = SpotifyGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    if (showSpotifyEmailInput) {
+                                        Spacer(modifier = Modifier.height(10.dp))
                                         OutlinedTextField(
-                                            value = tokenInput,
-                                            onValueChange = { tokenInput = it },
-                                            placeholder = { Text("Token...", fontSize = 11.sp, color = Color.Gray) },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(48.dp),
+                                            value = spotifyEmailInput,
+                                            onValueChange = { spotifyEmailInput = it },
+                                            placeholder = { Text("Spotify Email (e.g. user@gmail.com)", fontSize = 11.sp, color = Color.Gray) },
+                                            modifier = Modifier.fillMaxWidth().height(50.dp),
                                             singleLine = true
                                         )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        OutlinedTextField(
+                                            value = spotifyTokenInput,
+                                            onValueChange = { spotifyTokenInput = it },
+                                            placeholder = { Text("Access Token or Password", fontSize = 11.sp, color = Color.Gray) },
+                                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                                            singleLine = true
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Button(
                                             onClick = {
-                                                if (tokenInput.isNotBlank()) {
-                                                    SpotifyClient.accessToken = tokenInput.trim()
+                                                if (spotifyEmailInput.isNotBlank() || spotifyTokenInput.isNotBlank()) {
+                                                    AccountManager.setSpotifyEmailAccount(
+                                                        email = if (spotifyEmailInput.isNotBlank()) spotifyEmailInput else "spotify_user",
+                                                        token = spotifyTokenInput.ifBlank { null }
+                                                    )
                                                     scope.launch {
                                                         SpotifyClient.fetchProfile()
                                                     }
-                                                    tokenInput = ""
+                                                    spotifyEmailInput = ""
+                                                    spotifyTokenInput = ""
+                                                    showSpotifyEmailInput = false
                                                 }
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen),
-                                            shape = RoundedCornerShape(8.dp)
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Text("Save", color = Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text("Link Spotify Account", color = Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -202,19 +264,96 @@ fun AccountSwitcherDialog(
                         }
 
                         AccountProvider.YOUTUBE -> {
-                            Column {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 Text(
                                     text = "YouTube Music Account (Google)",
                                     color = White,
-                                    fontSize = 13.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Connected via RVX YouTube Music engine. Syncs songs using your Google account / Gmail. All songs you like with the Heart icon will be saved to your active YouTube Liked Music library!",
-                                    color = SpotifySubdued,
-                                    fontSize = 11.sp
-                                )
+
+                                if (AccountManager.isYouTubeConnected) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(vertical = 6.dp)
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = RvxRed, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Logged in as ${youtubeEmail ?: "Google Account"}",
+                                            color = White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Text(
+                                        text = "Powered by RVX YouTube Music engine. Liking tracks with the Heart icon saves them to your YouTube Liked Music library.",
+                                        color = SpotifySubdued,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextButton(
+                                        onClick = {
+                                            AccountManager.disconnectYouTube()
+                                            AccountManager.switchAccount(AccountProvider.GUEST)
+                                        },
+                                        colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFF5555))
+                                    ) {
+                                        Text("Disconnect YouTube", fontSize = 12.sp)
+                                    }
+                                } else {
+                                    Text(
+                                        text = "Log in with your Google account to sync your YouTube Music library:",
+                                        color = SpotifySubdued,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Button 1: Google Account Sign-In Web Portal
+                                    Button(
+                                        onClick = {
+                                            val ytLoginUrl = "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F"
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(ytLoginUrl))
+                                            context.startActivity(intent)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242424)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, tint = RvxRed, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Sign in with Google Account", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Button 2: Direct Google Email linking
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        OutlinedTextField(
+                                            value = youtubeEmailInput,
+                                            onValueChange = { youtubeEmailInput = it },
+                                            placeholder = { Text("Google Email (user@gmail.com)", fontSize = 11.sp, color = Color.Gray) },
+                                            modifier = Modifier.weight(1f).height(48.dp),
+                                            singleLine = true
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Button(
+                                            onClick = {
+                                                if (youtubeEmailInput.isNotBlank()) {
+                                                    AccountManager.setYouTubeAccount(youtubeEmailInput)
+                                                    youtubeEmailInput = ""
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = RvxRed),
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Text("Link", color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -223,12 +362,12 @@ fun AccountSwitcherDialog(
                                 Text(
                                     text = "Guest Mode Active",
                                     color = White,
-                                    fontSize = 13.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Enjoy ad-free music streaming powered by the RVX engine without logging in.",
+                                    text = "Enjoy ad-free music streaming powered by the RVX engine without logging into any account.",
                                     color = SpotifySubdued,
                                     fontSize = 11.sp
                                 )

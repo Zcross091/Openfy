@@ -26,6 +26,42 @@ object AccountManager {
     )
     val activeProvider = _activeProvider.asStateFlow()
 
+    private val _youtubeEmail = MutableStateFlow(prefs.getString("youtube_email", null))
+    val youtubeEmail = _youtubeEmail.asStateFlow()
+
+    private val _spotifyEmail = MutableStateFlow(prefs.getString("spotify_email", null))
+    val spotifyEmail = _spotifyEmail.asStateFlow()
+
+    val isYouTubeConnected: Boolean
+        get() = !_youtubeEmail.value.isNullOrEmpty()
+
+    val isSpotifyConnected: Boolean
+        get() = SpotifyClient.isConnected || !_spotifyEmail.value.isNullOrEmpty()
+
+    fun setYouTubeAccount(email: String) {
+        _youtubeEmail.value = email.trim()
+        prefs.edit().putString("youtube_email", email.trim()).apply()
+    }
+
+    fun disconnectYouTube() {
+        _youtubeEmail.value = null
+        prefs.edit().remove("youtube_email").apply()
+    }
+
+    fun setSpotifyEmailAccount(email: String, token: String? = null) {
+        _spotifyEmail.value = email.trim()
+        prefs.edit().putString("spotify_email", email.trim()).apply()
+        if (!token.isNullOrEmpty()) {
+            SpotifyClient.accessToken = token.trim()
+        }
+    }
+
+    fun disconnectSpotify() {
+        SpotifyClient.disconnect()
+        _spotifyEmail.value = null
+        prefs.edit().remove("spotify_email").apply()
+    }
+
     private val _toastEvent = MutableSharedFlow<String>()
     val toastEvent = _toastEvent.asSharedFlow()
 
