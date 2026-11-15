@@ -62,27 +62,32 @@ jobs:
           retention-days: 30
 
       - name: Release Every Newest APK as Latest
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "Openfy Latest Release (Auto-Build)"
-          body: |
-            ### 🎵 Openfy Android - Automated Build
-            
-            This release is automatically generated on every new commit to ensure you always have the freshest build.
-            
-            * **Commit:** `${{ github.sha }}`
-            * **Message:** `${{ github.event.head_commit.message }}`
-            * **Persistent Signature:** Signed with the official Openfy release key (v1, v2, v3, v4 schemes). You can update this APK directly over older versions without uninstalling!
-            * **Logo & Assets:** Full-resolution icon and adaptive launcher included.
-            
-            #### 📥 Download:
-            Download **`Openfy.apk`** below and install it directly on your Android phone!
-          draft: false
-          prerelease: false
-          make_latest: true
-          files: |
-            release-artifacts/Openfy.apk
-            release-artifacts/Openfy-${{ github.sha }}.apk
+        run: |
+          echo "Configuring git tag for latest commit ${{ github.sha }}..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f latest ${{ github.sha }}
+          git push -f origin latest || true
+
+          echo "Removing previous release to eliminate stale APK assets..."
+          gh release delete latest --yes || true
+
+          echo "Creating fresh rolling latest release..."
+          gh release create latest release-artifacts/Openfy.apk \
+            --title "Openfy Latest Release (Auto-Build)" \
+            --notes "### 🎵 Openfy Android - Automated Build
+
+          This release is automatically updated on every new commit to ensure you always have the freshest build.
+
+          * **Commit:** \`${{ github.sha }}\`
+          * **Message:** ${{ github.event.head_commit.message }}
+          * **Persistent Signature:** Signed with the official Openfy release key (v1, v2, v3, v4 schemes). You can update this APK directly over older versions without uninstalling!
+          * **Logo & Assets:** Full-resolution icon and adaptive launcher included.
+
+          #### 📥 Download:
+          Download **\`Openfy.apk\`** below and install it directly on your Android phone!" \
+            --target ${{ github.sha }} \
+            --latest
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
