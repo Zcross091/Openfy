@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.openfy.music.data.AccountManager
+import com.openfy.music.data.local.LocalMediaScanner
 import com.openfy.music.data.model.AccountProvider
 import com.openfy.music.data.model.Playlist
 import com.openfy.music.data.model.Track
@@ -48,6 +49,7 @@ fun LikedSongsScreen(
     var selectedPlaylist by remember { mutableStateOf<Playlist?>(null) }
     var playlistTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var likedTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var localTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var playlists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -72,6 +74,15 @@ fun LikedSongsScreen(
             } else {
                 YouTubeAudioResolver.getTrendingTracks(p.trackCount.coerceAtLeast(10))
             }
+            isLoading = false
+        }
+    }
+
+    // Load local tracks when Local Music filter is selected
+    LaunchedEffect(selectedFilter) {
+        if (selectedFilter == "Local Music" && localTracks.isEmpty()) {
+            isLoading = true
+            localTracks = LocalMediaScanner.scanLocalTracks()
             isLoading = false
         }
     }
@@ -269,6 +280,11 @@ fun LikedSongsScreen(
                         isSelected = selectedFilter == "Liked Songs",
                         onClick = { selectedFilter = "Liked Songs" }
                     )
+                    FilterChipPill(
+                        label = "Local Music",
+                        isSelected = selectedFilter == "Local Music",
+                        onClick = { selectedFilter = "Local Music" }
+                    )
                 }
             }
         }
@@ -389,6 +405,127 @@ fun LikedSongsScreen(
                     Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
                         Text(
                             text = "Songs you like will appear here.\nTap the Heart icon while listening to save tracks to your ${activeProvider.name.lowercase().replaceFirstChar { it.uppercase() }} library!",
+                            color = SpotifySubdued,
+                            fontSize = 13.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        } else if (selectedFilter == "Local Music") {
+            // Local Offline Music Header
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF1B4D3E), Color(0xFF0E2820), SpotifyBlack)
+                            )
+                        )
+                        .padding(horizontal = 16.dp, vertical = 20.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(
+                                        Brush.linearGradient(
+                                            listOf(Color(0xFF00C853), Color(0xFF1B5E20))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = White,
+                                    modifier = Modifier.size(40.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = "Device Storage",
+                                    color = SpotifySubdued,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Local Music",
+                                    color = White,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                                Text(
+                                    text = "${localTracks.size} offline tracks found",
+                                    color = SpotifySubdued,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Play All Local Button
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(SpotifyGreen),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (localTracks.isNotEmpty()) {
+                                    PlaybackManager.playTrack(localTracks.first(), localTracks)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play all local",
+                                tint = Black,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Local Tracks List
+            if (isLoading) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = SpotifyGreen)
+                    }
+                }
+            } else if (localTracks.isNotEmpty()) {
+                itemsIndexed(localTracks) { index, track ->
+                    TrackRowItem(
+                        track = track,
+                        index = index,
+                        isCurrent = currentTrack?.id == track.id,
+                        onClick = { PlaybackManager.playTrack(track, localTracks) }
+                    )
+                }
+            } else {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "No local audio files found on your device.\nSupported formats: MP3, FLAC, M4A, WAV, AAC, OPUS.",
                             color = SpotifySubdued,
                             fontSize = 13.sp,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,

@@ -92,7 +92,11 @@ object PlaybackManager {
         }
 
         scope.launch {
-            val streamUrl = YouTubeAudioResolver.resolveStreamUrl(track)
+            val streamUrl = if (track.id.startsWith("LOCAL:")) {
+                track.id.removePrefix("LOCAL:")
+            } else {
+                YouTubeAudioResolver.resolveStreamUrl(track)
+            }
             if (streamUrl != null && exoPlayer != null) {
                 val metadata = MediaMetadata.Builder()
                     .setTitle(track.title)

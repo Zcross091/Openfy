@@ -16,7 +16,11 @@ export async function GET(request: NextRequest) {
     const remoteRes = await fetch(remoteUrl, { next: { revalidate: 300 } });
     if (remoteRes.ok) {
       const data = await remoteRes.json();
-      return NextResponse.json(data);
+      return NextResponse.json(data, {
+        headers: {
+          "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        },
+      });
     }
   } catch (err) {
     console.warn("Oracle Cloud backend unreachable, falling back to local scraper:", err);

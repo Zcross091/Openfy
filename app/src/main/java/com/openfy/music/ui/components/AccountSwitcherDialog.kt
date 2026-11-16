@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.openfy.music.data.AccountManager
+import com.openfy.music.data.AudioQuality
+import com.openfy.music.data.SettingsManager
 import com.openfy.music.data.model.AccountProvider
 import com.openfy.music.data.remote.SpotifyClient
 import com.openfy.music.ui.theme.Black
@@ -39,6 +41,7 @@ fun AccountSwitcherDialog(
     onDismiss: () -> Unit
 ) {
     val activeProvider by AccountManager.activeProvider.collectAsState()
+    val currentQuality by SettingsManager.audioQuality.collectAsState()
     val spotifyEmail by AccountManager.spotifyEmail.collectAsState()
     val youtubeEmail by AccountManager.youtubeEmail.collectAsState()
     val context = LocalContext.current
@@ -376,6 +379,70 @@ fun AccountSwitcherDialog(
                                     text = "Enjoy ad-free music streaming powered by the RVX engine without logging into any account.",
                                     color = SpotifySubdued,
                                     fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Audio Streaming Quality Preference Section
+                Text(
+                    text = "Audio Streaming Quality",
+                    color = White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Select audio fidelity profile. Auto prioritizes Opus (~160kbps) with instant AAC fallback.",
+                    color = SpotifySubdued,
+                    fontSize = 11.sp
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AudioQuality.values().forEach { q ->
+                        val isSelected = currentQuality == q
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) SpotifyGreen.copy(alpha = 0.2f) else Color(0xFF222222))
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 0.5.dp,
+                                    color = if (isSelected) SpotifyGreen else Color(0xFF333333),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { SettingsManager.setAudioQuality(q) }
+                                .padding(vertical = 8.dp, horizontal = 2.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = when (q) {
+                                        AudioQuality.AUTO -> "Auto"
+                                        AudioQuality.HIGH -> "High"
+                                        AudioQuality.NORMAL -> "Normal"
+                                        AudioQuality.DATA_SAVER -> "Saver"
+                                    },
+                                    color = if (isSelected) SpotifyGreen else White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = when (q) {
+                                        AudioQuality.AUTO -> "160k"
+                                        AudioQuality.HIGH -> "160k"
+                                        AudioQuality.NORMAL -> "130k"
+                                        AudioQuality.DATA_SAVER -> "70k"
+                                    },
+                                    color = SpotifySubdued,
+                                    fontSize = 9.sp
                                 )
                             }
                         }

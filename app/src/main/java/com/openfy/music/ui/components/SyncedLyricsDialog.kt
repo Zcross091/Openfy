@@ -47,9 +47,10 @@ fun SyncedLyricsDialog(
         if (track != null) {
             isLoading = true
             lyricsData = LyricsClient.getLyrics(
-                track.title,
-                track.artistNames,
-                track.durationSeconds
+                trackTitle = track.title,
+                artistName = track.artistNames,
+                durationSeconds = track.durationSeconds,
+                videoId = track.youtubeId ?: track.id
             )
             isLoading = false
         }
