@@ -1,7 +1,5 @@
 package com.openfy.music.ui.components
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,11 +44,23 @@ fun AccountSwitcherDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    var showAuthWebViewForProvider by remember { mutableStateOf<AccountProvider?>(null) }
+
     var showSpotifyEmailInput by remember { mutableStateOf(false) }
     var spotifyEmailInput by remember { mutableStateOf("") }
     var spotifyTokenInput by remember { mutableStateOf("") }
 
     var youtubeEmailInput by remember { mutableStateOf("") }
+
+    if (showAuthWebViewForProvider != null) {
+        AuthWebViewDialog(
+            provider = showAuthWebViewForProvider!!,
+            onDismiss = { showAuthWebViewForProvider = null },
+            onSuccess = { msg ->
+                // AccountManager triggers state refresh automatically
+            }
+        )
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -186,12 +196,10 @@ fun AccountSwitcherDialog(
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
 
-                                    // Button 1: Google Login for Spotify
+                                    // Button 1: In-App Web Login for Spotify (Supports Google Sign-In)
                                     Button(
                                         onClick = {
-                                            val spotifyOAuthUrl = "https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com"
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(spotifyOAuthUrl))
-                                            context.startActivity(intent)
+                                            showAuthWebViewForProvider = AccountProvider.SPOTIFY
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242424)),
                                         shape = RoundedCornerShape(8.dp),
@@ -200,7 +208,7 @@ fun AccountSwitcherDialog(
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, tint = White, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Log in with Google Account", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("Log in with Google Account / Web", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
 
@@ -288,7 +296,7 @@ fun AccountSwitcherDialog(
                                         )
                                     }
                                     Text(
-                                        text = "Powered by RVX YouTube Music engine. Liking tracks with the Heart icon saves them to your YouTube Liked Music library.",
+                                        text = "Powered by RVX YouTube Music engine. Liking tracks with the Heart icon saves them directly to your YouTube Liked Music library.",
                                         color = SpotifySubdued,
                                         fontSize = 11.sp
                                     )
@@ -310,12 +318,10 @@ fun AccountSwitcherDialog(
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
 
-                                    // Button 1: Google Account Sign-In Web Portal
+                                    // Button 1: In-App Google Account Sign-In
                                     Button(
                                         onClick = {
-                                            val ytLoginUrl = "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F"
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(ytLoginUrl))
-                                            context.startActivity(intent)
+                                            showAuthWebViewForProvider = AccountProvider.YOUTUBE
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242424)),
                                         shape = RoundedCornerShape(8.dp),

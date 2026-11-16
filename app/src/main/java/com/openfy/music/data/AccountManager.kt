@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.security.MessageDigest
 
 object AccountManager {
     private val prefs by lazy {
@@ -29,23 +30,55 @@ object AccountManager {
     private val _youtubeEmail = MutableStateFlow(prefs.getString("youtube_email", null))
     val youtubeEmail = _youtubeEmail.asStateFlow()
 
+    private val _youtubeCookie = MutableStateFlow(prefs.getString("youtube_cookie", null))
+    val youtubeCookie: String?
+        get() = _youtubeCookie.value
+
     private val _spotifyEmail = MutableStateFlow(prefs.getString("spotify_email", null))
     val spotifyEmail = _spotifyEmail.asStateFlow()
 
+    private val _spotifyCookie = MutableStateFlow(prefs.getString("spotify_cookie", null))
+    val spotifyCookie: String?
+        get() = _spotifyCookie.value
+
     val isYouTubeConnected: Boolean
-        get() = !_youtubeEmail.value.isNullOrEmpty()
+        get() = !_youtubeEmail.value.isNullOrEmpty() || !_youtubeCookie.value.isNullOrEmpty()
 
     val isSpotifyConnected: Boolean
-        get() = SpotifyClient.isConnected || !_spotifyEmail.value.isNullOrEmpty()
+        get() = SpotifyClient.isConnected || !_spotifyEmail.value.isNullOrEmpty() || !_spotifyCookie.value.isNullOrEmpty()
+
+    fun setYouTubeGoogleCookies(cookies: String, email: String? = null) {
+        val resolvedEmail = email ?: "Google Account"
+        _youtubeCookie.value = cookies
+        _youtubeEmail.value = resolvedEmail
+        prefs.edit()
+            .putString("youtube_cookie", cookies)
+            .putString("youtube_email", resolvedEmail)
+            .apply()
+        switchAccount(AccountProvider.YOUTUBE)
+    }
 
     fun setYouTubeAccount(email: String) {
         _youtubeEmail.value = email.trim()
         prefs.edit().putString("youtube_email", email.trim()).apply()
+        switchAccount(AccountProvider.YOUTUBE)
     }
 
     fun disconnectYouTube() {
         _youtubeEmail.value = null
-        prefs.edit().remove("youtube_email").apply()
+        _youtubeCookie.value = null
+        prefs.edit().remove("youtube_email").remove("youtube_cookie").apply()
+    }
+
+    fun setSpotifySession(cookies: String, email: String? = null) {
+        val resolvedEmail = email ?: "Spotify User"
+        _spotifyCookie.value = cookies
+        _spotifyEmail.value = resolvedEmail
+        prefs.edit()
+            .putString("spotify_cookie", cookies)
+            .putString("spotify_email", resolvedEmail)
+            .apply()
+        switchAccount(AccountProvider.SPOTIFY)
     }
 
     fun setSpotifyEmailAccount(email: String, token: String? = null) {
@@ -54,12 +87,14 @@ object AccountManager {
         if (!token.isNullOrEmpty()) {
             SpotifyClient.accessToken = token.trim()
         }
+        switchAccount(AccountProvider.SPOTIFY)
     }
 
     fun disconnectSpotify() {
         SpotifyClient.disconnect()
         _spotifyEmail.value = null
-        prefs.edit().remove("spotify_email").apply()
+        _spotifyCookie.value = null
+        prefs.edit().remove("spotify_email").remove("spotify_cookie").apply()
     }
 
     private val _toastEvent = MutableSharedFlow<String>()
@@ -68,6 +103,27 @@ object AccountManager {
     fun switchAccount(provider: AccountProvider) {
         _activeProvider.value = provider
         prefs.edit().putString("provider", provider.name).apply()
+    }
+
+    /**
+     * Compute SAPISIDHASH for InnerTube authenticated calls with Google account.
+     * Follows the algorithm: SAPISIDHASH <epoch>_<sha1(epoch + " " + SAPISID + " " + origin)>
+     */
+    fun getSapisidHash(origin: String = "https://music.youtube.com"): String? {
+        val cookie = _youtubeCookie.value ?: return null
+        val sapisid = cookie.split(";").map { it.trim() }.firstNotNullOfOrNull { kv ->
+            val parts = kv.split("=", limit = 2)
+            if (parts.size == 2 && (parts[0] == "SAPISID" || parts[0] == "__Secure-3PAPISID")) {
+                parts[1]
+            } else null
+        } ?: return null
+
+        val epoch = System.currentTimeMillis() / 1000L
+        val input = "$epoch $sapisid $origin"
+        val md = MessageDigest.getInstance("SHA-1")
+        val digest = md.digest(input.toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02x".format(it) }
+        return "SAPISIDHASH ${epoch}_$hex"
     }
 
     suspend fun getLikedTracks(): List<Track> {
@@ -80,8 +136,11 @@ object AccountManager {
                 }
             }
             AccountProvider.YOUTUBE -> {
-                // Return curated trending or YouTube library
-                YouTubeAudioResolver.getTrendingTracks()
+                if (isYouTubeConnected && !youtubeCookie.isNullOrEmpty()) {
+                    YouTubeAudioResolver.getLikedVideos()
+                } else {
+                    YouTubeAudioResolver.getTrendingTracks()
+                }
             }
             AccountProvider.GUEST -> {
                 YouTubeAudioResolver.getTrendingTracks()
@@ -96,7 +155,14 @@ object AccountManager {
                     SpotifyClient.getUserPlaylists()
                 } else YouTubeAudioResolver.getCuratedPlaylists()
             }
-            AccountProvider.YOUTUBE, AccountProvider.GUEST -> {
+            AccountProvider.YOUTUBE -> {
+                if (isYouTubeConnected && !youtubeCookie.isNullOrEmpty()) {
+                    YouTubeAudioResolver.getUserPlaylists()
+                } else {
+                    YouTubeAudioResolver.getCuratedPlaylists()
+                }
+            }
+            AccountProvider.GUEST -> {
                 YouTubeAudioResolver.getCuratedPlaylists()
             }
         }
@@ -114,8 +180,12 @@ object AccountManager {
                 else SpotifyClient.removeTrack(track)
             }
             AccountProvider.YOUTUBE -> {
-                // In YouTube Music, rate_song(LIKE)
-                true
+                val vid = track.youtubeId ?: track.id
+                if (vid.length == 11 && !youtubeCookie.isNullOrEmpty()) {
+                    YouTubeAudioResolver.rateSong(vid, newLiked)
+                } else {
+                    true
+                }
             }
             AccountProvider.GUEST -> true
         }
