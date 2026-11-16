@@ -26,3 +26,10 @@ __pycache__/
 *.pyc
 node_modules/
 dist/
+.next/
+web/.next/
+out/
+.env*
+!.env.example
+.local.env
+
