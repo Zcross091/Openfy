@@ -1,22 +1,34 @@
-### 🎵 Openfy Android v1.1.0
+### 🎵 Openfy v1.2.0 - Cross-Platform Release (Android & iOS)
 
-**Openfy** is a pure native Android streaming client bringing Spotify's sleek interface together with RVX YouTube Music's high-fidelity, ad-free streaming engine.
+**Openfy** is an ad-free music streaming client bringing Spotify's sleek interface together with RVX YouTube Music's high-fidelity audio engine.
+
+Starting with **v1.2.0**, Openfy is a **universal cross-platform app** running on both **Android** and **iOS** powered by **Compose Multiplatform (CMP)** and **Kotlin Multiplatform (KMP)**!
 
 ---
 
-### 🚀 What's New
-* **Spotify Library Sync**: Fast 1-click `sp_dc` cookie input to sync your Liked Songs and playlists without developer portal registration.
-* **Playlist Management & Direct Heart**: Dedicated Add-to-Playlist sheet, '+ New Playlist' creation dialog, and instant Spotify API library write (`PUT /v1/me/tracks`).
-* **LRCLIB Real-time Lyrics**: Fullscreen synced karaoke lyrics with line-by-line autoscroll and tap-to-seek.
-* **Desktop Google Login Flow**: Seamless Google Sign-In WebView detection bypass with persistent session cookies.
+### 🍏 What's New for iOS
+* **Compose Multiplatform UI**: 1:1 Spotify mobile dark interface running natively on iPhone and iPad.
+* **Native Apple Audio Engine (`AVPlayer`)**: Streams high-efficiency AAC 128 kbps (itag 140) with native hardware acceleration and battery optimization.
+* **Background Playback**: `AVAudioSessionCategoryPlayback` ensures music keeps playing with the screen locked or app in background.
+* **Lock Screen & Dynamic Island**: `MPNowPlayingInfoCenter` integration showing track titles, artist, album art, and progress scrubber.
+* **AirPods & Control Center**: Full `MPRemoteCommandCenter` support for headphone clicks and Control Center scrubbers.
+* **Sideloadable IPA Package**: Download `Openfy.ipa` below and sideload with AltStore, SideStore, TrollStore, or Sideloadly!
 
-### 🛠️ Bug Fixes & Stability
-* **Playback Buffer & Wake Lock**: Fixed the 50-second background playback pause using `WAKE_MODE_NETWORK`, 3-minute ExoPlayer buffering, and persistent foreground service.
-* **Cipher Solving**: Integrated InnerTube STS cipher decryption for unthrottled streams.
+---
 
-### 🔒 Verification & Hashes
-* **Persistent Keystore Signature**: In-place updates supported across all releases without uninstalling!
-* **Cryptographic Checksums**: See attached `SHA256SUMS.txt` to verify your APK package.
+### 🤖 What's New for Android
+* **Opus 160k Streaming**: Full-fidelity Opus extraction via InnerTube with ExoPlayer.
+* **Spotify Library Sync**: Fast 1-click `sp_dc` cookie input to sync Liked Songs and playlists.
+* **Playlist Management & Direct Heart**: Add-to-Playlist sheet, '+ New Playlist' creation, and instant Spotify API library write (`PUT /v1/me/tracks`).
+* **LRCLIB Synced Karaoke Lyrics**: Fullscreen real-time synced lyrics with line-by-line autoscroll and tap-to-seek.
+* **Persistent Keystore Signature**: Direct in-place updates supported across all releases!
+
+---
+
+### 🔒 Verification & Checksums
+* **Android APK**: `Openfy.apk` / `Openfy-v1.2.0.apk` (see `SHA256SUMS.txt`)
+* **iOS IPA**: `Openfy.ipa` / `Openfy-v1.2.0.ipa` (see `SHA256SUMS-ios.txt`)
 
 #### 📥 Download:
-Download **`Openfy.apk`** or **`Openfy-v1.1.0.apk`** below to install directly on your Android phone!
+- **Android Users**: Download **`Openfy.apk`** below to install directly.
+- **iOS Users**: Download **`Openfy.ipa`** below to sideload via AltStore / SideStore / TrollStore.

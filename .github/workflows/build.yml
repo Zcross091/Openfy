@@ -101,17 +101,24 @@ jobs:
           git tag -f latest ${{ github.sha }}
           git push -f origin latest || true
 
-          gh release delete latest --yes || true
-
           printf "### 🎵 Openfy Android - Latest Release (%s)\n\nThis rolling release points to the newest stable build.\n\n* **Version:** \`%s\`\n* **Commit:** \`%s\`\n* **SHA-256:** \`%s\`\n* **Persistent Signature:** Signed with the official Openfy release key. Direct updates over previous versions are supported without uninstalling!\n\n#### 📥 Direct Download:\nDownload **\`Openfy.apk\`** below.\n" "${TAG}" "${TAG}" "${{ github.sha }}" "${APK_SHA}" > release_notes_latest.txt
 
-          gh release create latest \
-            release-artifacts/Openfy.apk \
-            release-artifacts/SHA256SUMS.txt \
-            --title "Openfy Latest Release (Auto-Build)" \
-            --notes-file release_notes_latest.txt \
-            --target ${{ github.sha }} \
-            --latest
+          if gh release view "latest" >/dev/null 2>&1; then
+            echo "Release 'latest' exists. Uploading Android APK with --clobber..."
+            gh release upload latest \
+              release-artifacts/Openfy.apk \
+              release-artifacts/SHA256SUMS.txt \
+              --clobber
+          else
+            echo "Creating rolling 'latest' release with Android APK..."
+            gh release create latest \
+              release-artifacts/Openfy.apk \
+              release-artifacts/SHA256SUMS.txt \
+              --title "Openfy Latest Release (Auto-Build)" \
+              --notes-file release_notes_latest.txt \
+              --target ${{ github.sha }} \
+              --latest
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
