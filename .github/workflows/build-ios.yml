@@ -58,7 +58,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Assemble Shared XCFramework
-        run: ./gradlew :composeApp:assembleOpenfyKitReleaseXCFramework --stacktrace
+        run: ./gradlew :composeApp:assembleOpenfyKitReleaseXCFramework --stacktrace --info --no-daemon
 
       - name: Build iOS xcarchive
         run: |

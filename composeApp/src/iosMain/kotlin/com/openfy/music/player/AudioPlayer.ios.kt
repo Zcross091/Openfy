@@ -8,7 +8,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVAudioSessionModeDefault
-import platform.AVFAudio.setActive
 import platform.AVFoundation.AVPlayer
 import platform.AVFoundation.AVPlayerItem
 import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
@@ -97,7 +96,7 @@ object IosAudioPlayer : NativeAudioPlayer {
                 error = null
             )
             session.setActive(active = true, error = null)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             println("[IosAudioPlayer] Audio session activation error: ${e.message}")
         }
     }
@@ -122,7 +121,7 @@ object IosAudioPlayer : NativeAudioPlayer {
 
         val currentPlayer = player
         if (currentPlayer == null) {
-            val newPlayer = AVPlayer(playerItem = item)
+            val newPlayer = AVPlayer.playerWithPlayerItem(item) ?: AVPlayer(uRL = nsUrl)
             player = newPlayer
             setupTimeObserver(newPlayer)
         } else {
@@ -219,11 +218,15 @@ object IosAudioPlayer : NativeAudioPlayer {
         if (!coverUrl.isNullOrEmpty()) {
             loadArtworkAsync(coverUrl) { image ->
                 if (image != null) {
-                    val artwork = MPMediaItemArtwork(boundsSize = image.size) { _ -> image }
-                    val currentInfo = MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo?.toMutableMap()
-                        ?: mutableMapOf<Any?, Any?>()
-                    currentInfo[MPMediaItemPropertyArtwork] = artwork
-                    MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = currentInfo
+                    try {
+                        val artwork = MPMediaItemArtwork(boundsSize = image.size) { image }
+                        val currentInfo = MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo?.toMutableMap()
+                            ?: mutableMapOf<Any?, Any?>()
+                        currentInfo[MPMediaItemPropertyArtwork] = artwork
+                        MPNowPlayingInfoCenter.defaultCenter().nowPlayingInfo = currentInfo
+                    } catch (e: Throwable) {
+                        println("[IosAudioPlayer] Artwork creation error: ${e.message}")
+                    }
                 }
             }
         }
@@ -332,13 +335,15 @@ object IosAudioPlayer : NativeAudioPlayer {
     }
 
     private fun currentPositionSeconds(): Double {
-        val time = player?.currentTime() ?: return 0.0
+        val p = player ?: return 0.0
+        val time = p.currentTime()
         val sec = CMTimeGetSeconds(time)
         return if (sec.isNaN() || sec.isInfinite() || sec < 0.0) 0.0 else sec
     }
 
     private fun currentDurationSeconds(): Double {
-        val dur = currentItem?.duration ?: return (currentTrack?.durationSeconds?.toDouble() ?: 0.0)
+        val item = currentItem ?: return (currentTrack?.durationSeconds?.toDouble() ?: 0.0)
+        val dur = item.duration
         val sec = CMTimeGetSeconds(dur)
         return if (sec.isNaN() || sec.isInfinite() || sec <= 0.0) {
             currentTrack?.durationSeconds?.toDouble() ?: 0.0
