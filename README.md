@@ -55,6 +55,23 @@ You can download the latest automated build directly from GitHub Releases:
 
 ---
 
+## 📱 App Slideshow & Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/openfy_slideshow.gif" width="340" alt="Openfy Mobile App Slideshow"/>
+  <br>
+  <em>✨ Looping slideshow preview of Openfy running on real Android devices ✨</em>
+</p>
+
+### 📸 Full Screen Showcase
+
+| 🏠 1. Home Feed | 🔍 2. Search & Browse | 📚 3. Your Library | 🎵 4. Now Playing (160k) | 🎤 5. Synced Lyrics |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/01_home_screen.jpg" width="180" alt="Home Screen"/> | <img src="docs/screenshots/02_search_browse.jpg" width="180" alt="Search Screen"/> | <img src="docs/screenshots/03_your_library.jpg" width="180" alt="Your Library"/> | <img src="docs/screenshots/04_now_playing.jpg" width="180" alt="Now Playing Screen"/> | <img src="docs/screenshots/05_synced_lyrics.jpg" width="180" alt="Live Synced Lyrics"/> |
+| *1:1 Spotify UI & top charts* | *Rich genre & category tiles* | *Playlists & Liked songs* | *Opus 160k stream & controls* | *Real-time karaoke highlighting* |
+
+---
+
 ## 🏗️ Architecture
 
 ```mermaid
