@@ -64,8 +64,13 @@ fun SearchScreen(
             isSearching = false
         } else {
             isSearching = true
-            delay(400)
-            searchResults = YouTubeAudioResolver.searchTracks(q)
+            delay(350)
+            searchResults = if (com.openfy.music.data.remote.SpotifyClient.isConnected) {
+                val spotResults = com.openfy.music.data.remote.SpotifyClient.searchSpotifyTracks(q)
+                if (spotResults.isNotEmpty()) spotResults else YouTubeAudioResolver.searchTracks(q)
+            } else {
+                YouTubeAudioResolver.searchTracks(q)
+            }
             isSearching = false
         }
     }

@@ -1,16 +1,13 @@
 package com.openfy.music
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.openfy.music.data.AccountManager
-import com.openfy.music.ui.components.AccountSwitcherDialog
+import com.openfy.music.ui.components.AuthWebViewDialog
 import com.openfy.music.ui.components.BottomMiniPlayer
 import com.openfy.music.ui.components.BottomNavigationBar
 import com.openfy.music.ui.components.NavigationTab
@@ -24,13 +21,13 @@ import com.openfy.music.ui.theme.Black
 import com.openfy.music.ui.theme.OpenfyTheme
 
 @Composable
-fun OpenfyApp() {
+fun App() {
     OpenfyTheme {
         var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
         var isNowPlayingExpanded by remember { mutableStateOf(false) }
         var isLyricsOpen by remember { mutableStateOf(false) }
-        var isAccountSwitcherOpen by remember { mutableStateOf(false) }
         var isSettingsOpen by remember { mutableStateOf(false) }
+        var isSpotifyAuthOpen by remember { mutableStateOf(false) }
 
         val snackbarHostState = remember { SnackbarHostState() }
 
@@ -56,11 +53,7 @@ fun OpenfyApp() {
                     BottomNavigationBar(
                         currentTab = currentTab,
                         onTabSelected = { tab ->
-                            if (tab == NavigationTab.ACCOUNT) {
-                                isAccountSwitcherOpen = true
-                            } else {
-                                currentTab = tab
-                            }
+                            currentTab = tab
                         }
                     )
                 }
@@ -75,7 +68,8 @@ fun OpenfyApp() {
                     NavigationTab.HOME -> {
                         HomeScreen(
                             onNavigateToLiked = { currentTab = NavigationTab.LIBRARY },
-                            onOpenSettings = { isSettingsOpen = true }
+                            onOpenSettings = { isSettingsOpen = true },
+                            onOpenSpotifyAuth = { isSpotifyAuthOpen = true }
                         )
                     }
                     NavigationTab.SEARCH -> {
@@ -83,14 +77,8 @@ fun OpenfyApp() {
                     }
                     NavigationTab.LIBRARY -> {
                         LikedSongsScreen(
-                            onOpenSettings = { isSettingsOpen = true }
-                        )
-                    }
-                    NavigationTab.ACCOUNT -> {
-                        // Fallback view if opened directly
-                        HomeScreen(
-                            onNavigateToLiked = { currentTab = NavigationTab.LIBRARY },
-                            onOpenSettings = { isSettingsOpen = true }
+                            onOpenSettings = { isSettingsOpen = true },
+                            onOpenSpotifyAuth = { isSpotifyAuthOpen = true }
                         )
                     }
                 }
@@ -114,10 +102,14 @@ fun OpenfyApp() {
                 )
             }
 
-            // Account Switcher Dialog
-            if (isAccountSwitcherOpen) {
-                AccountSwitcherDialog(
-                    onDismiss = { isAccountSwitcherOpen = false }
+            // Spotify Sign-In / Connect Modal
+            if (isSpotifyAuthOpen) {
+                AuthWebViewDialog(
+                    provider = com.openfy.music.data.model.AccountProvider.SPOTIFY,
+                    onDismiss = { isSpotifyAuthOpen = false },
+                    onSuccess = { _ ->
+                        isSpotifyAuthOpen = false
+                    }
                 )
             }
 

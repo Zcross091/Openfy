@@ -282,12 +282,12 @@ object YouTubeAudioResolver {
 
         val quality = SettingsManager.audioQuality.value
 
-        // Tier 1: ANDROID_MUSIC (Client 21)
-        var streamUrl = fetchAndroidMusicStreamUrl(videoId, quality)
+        // Tier 1: IOS (Client 5, v20.10.1) - Primary unciphered direct extractor (Opus 160k / AAC 128k)
+        var streamUrl = fetchIosStreamUrl(videoId, quality)
 
-        // Tier 2: IOS (Client 5, v20.10.1) - Primary unciphered direct extractor
+        // Tier 2: ANDROID_MUSIC (Client 21)
         if (streamUrl == null) {
-            streamUrl = fetchIosStreamUrl(videoId, quality)
+            streamUrl = fetchAndroidMusicStreamUrl(videoId, quality)
         }
 
         // Tier 3: WEB_REMIX (Client 67)

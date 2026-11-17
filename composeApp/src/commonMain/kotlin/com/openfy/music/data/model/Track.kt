@@ -5,14 +5,18 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class Artist(
     val id: String? = null,
-    val name: String
+    val name: String,
+    val avatarUrl: String? = null,
+    val followers: Int = 0
 )
 
 @Serializable
 data class Album(
     val id: String? = null,
     val name: String,
-    val coverUrl: String? = null
+    val coverUrl: String? = null,
+    val artistName: String? = null,
+    val releaseYear: String? = null
 )
 
 @Serializable

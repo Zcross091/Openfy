@@ -395,7 +395,7 @@ fun SettingsScreen(
                             }
                         }
 
-                        // YouTube Status Card
+                        // Background Audio Engine Card
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -415,58 +415,30 @@ fun SettingsScreen(
                                             modifier = Modifier
                                                 .size(10.dp)
                                                 .clip(CircleShape)
-                                                .background(if (AccountManager.isYouTubeConnected) RvxRed else Color(0xFF5588FF))
+                                                .background(SpotifyGreen)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = "YouTube Music Engine",
+                                            text = "Background Audio Engine",
                                             color = White,
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
-
-                                    if (AccountManager.isYouTubeConnected) {
-                                        TextButton(
-                                            onClick = {
-                                                AccountManager.disconnectYouTube()
-                                                AccountManager.switchAccount(AccountProvider.GUEST)
-                                                showFeedback("YouTube account disconnected")
-                                            },
-                                            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFFF5555))
-                                        ) {
-                                            Text("Disconnect", fontSize = 12.sp)
-                                        }
-                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(4.dp))
-
-                                if (AccountManager.isYouTubeConnected) {
-                                    Text(
-                                        text = "Active (Google: ${youtubeEmail ?: "Connected"})",
-                                        color = White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "InnerTube streams resolved with personalized account data and playback recommendations.",
-                                        color = SpotifySubdued,
-                                        fontSize = 11.sp
-                                    )
-                                } else {
-                                    Text(
-                                        text = "Active (Guest Mode - No login required)",
-                                        color = Color(0xFF88AAFF),
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "Anonymous high-speed InnerTube streaming with automatic cipher solving and audio extraction.",
-                                        color = SpotifySubdued,
-                                        fontSize = 11.sp
-                                    )
-                                }
+                                Text(
+                                    text = "Active (RVX InnerTube - No Sign-In Needed)",
+                                    color = Color(0xFF88AAFF),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Streams high-fidelity audio (Opus 160k / AAC 128k) anonymously for your Spotify catalog without requiring a paid Spotify subscription.",
+                                    color = SpotifySubdued,
+                                    fontSize = 11.sp
+                                )
                             }
                         }
                     }

@@ -4,17 +4,19 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import com.openfy.music.data.AccountManager
-import com.openfy.music.ui.components.*
+import com.openfy.music.ui.components.AuthWebViewDialog
+import com.openfy.music.ui.components.BottomMiniPlayer
+import com.openfy.music.ui.components.BottomNavigationBar
+import com.openfy.music.ui.components.NavigationTab
+import com.openfy.music.ui.components.NowPlayingSheet
+import com.openfy.music.ui.components.SyncedLyricsDialog
 import com.openfy.music.ui.screens.HomeScreen
 import com.openfy.music.ui.screens.LikedSongsScreen
 import com.openfy.music.ui.screens.SearchScreen
@@ -31,8 +33,8 @@ class MainActivity : ComponentActivity() {
                 var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
                 var isNowPlayingExpanded by remember { mutableStateOf(false) }
                 var isLyricsOpen by remember { mutableStateOf(false) }
-                var isAccountSwitcherOpen by remember { mutableStateOf(false) }
                 var isSettingsOpen by remember { mutableStateOf(false) }
+                var isSpotifyAuthOpen by remember { mutableStateOf(false) }
 
                 val snackbarHostState = remember { SnackbarHostState() }
 
@@ -54,15 +56,11 @@ class MainActivity : ComponentActivity() {
                                 onExpand = { isNowPlayingExpanded = true }
                             )
 
-                            // Spotify Bottom Navigation Bar
+                            // Spotify Bottom Navigation Bar (3-tab: Home, Search, Your Library)
                             BottomNavigationBar(
                                 currentTab = currentTab,
                                 onTabSelected = { tab ->
-                                    if (tab == NavigationTab.ACCOUNT) {
-                                        isAccountSwitcherOpen = true
-                                    } else {
-                                        currentTab = tab
-                                    }
+                                    currentTab = tab
                                 }
                             )
                         }
@@ -77,7 +75,8 @@ class MainActivity : ComponentActivity() {
                             NavigationTab.HOME -> {
                                 HomeScreen(
                                     onNavigateToLiked = { currentTab = NavigationTab.LIBRARY },
-                                    onOpenSettings = { isSettingsOpen = true }
+                                    onOpenSettings = { isSettingsOpen = true },
+                                    onOpenSpotifyAuth = { isSpotifyAuthOpen = true }
                                 )
                             }
                             NavigationTab.SEARCH -> {
@@ -85,14 +84,8 @@ class MainActivity : ComponentActivity() {
                             }
                             NavigationTab.LIBRARY -> {
                                 LikedSongsScreen(
-                                    onOpenSettings = { isSettingsOpen = true }
-                                )
-                            }
-                            NavigationTab.ACCOUNT -> {
-                                // Fallback view if opened directly
-                                HomeScreen(
-                                    onNavigateToLiked = { currentTab = NavigationTab.LIBRARY },
-                                    onOpenSettings = { isSettingsOpen = true }
+                                    onOpenSettings = { isSettingsOpen = true },
+                                    onOpenSpotifyAuth = { isSpotifyAuthOpen = true }
                                 )
                             }
                         }
@@ -116,10 +109,14 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // Account Switcher Dialog
-                    if (isAccountSwitcherOpen) {
-                        AccountSwitcherDialog(
-                            onDismiss = { isAccountSwitcherOpen = false }
+                    // Spotify Sign-In / Connect Modal
+                    if (isSpotifyAuthOpen) {
+                        AuthWebViewDialog(
+                            onDismiss = { isSpotifyAuthOpen = false },
+                            onSuccess = { msg ->
+                                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                                isSpotifyAuthOpen = false
+                            }
                         )
                     }
 
