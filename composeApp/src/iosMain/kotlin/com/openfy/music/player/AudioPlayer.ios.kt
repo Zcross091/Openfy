@@ -3,6 +3,7 @@
 package com.openfy.music.player
 
 import com.openfy.music.data.model.Track
+import com.openfy.music.data.remote.YouTubeAudioResolver
 import com.openfy.music.util.ArtworkUtils
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi

@@ -20,6 +20,6 @@ fun MainViewController(): UIViewController {
     SettingsManager.initSettings(IosSettings())
     IosAudioPlayer.initialize()
     return ComposeUIViewController {
-        OpenfyApp()
+        App()
     }
 }
