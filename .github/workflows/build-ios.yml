@@ -1,0 +1,187 @@
+name: Build & Release Openfy iOS IPA
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    name: Build & Package iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Set up Xcode 16
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16'
+
+      - name: Verify Environment & Tools
+        run: |
+          echo "=== Java Version ==="
+          java -version
+          echo "=== Xcode Version ==="
+          xcodebuild -version
+          echo "=== macOS Version ==="
+          sw_vers
+
+      - name: Ensure Gradle Wrapper is Executable
+        run: chmod +x gradlew
+
+      - name: Assemble Shared XCFramework
+        run: ./gradlew :composeApp:assembleOpenfyKitReleaseXCFramework --stacktrace
+
+      - name: Build iOS xcarchive
+        run: |
+          # Detect workspace or project
+          if [ -d "iosApp/iosApp.xcworkspace" ]; then
+            CONTAINER_FLAG="-workspace iosApp/iosApp.xcworkspace"
+          else
+            CONTAINER_FLAG="-project iosApp/iosApp.xcodeproj"
+          fi
+
+          # Detect scheme name (fallback to iosApp)
+          SCHEME="iosApp"
+          AVAILABLE_SCHEMES=$(xcodebuild -list $CONTAINER_FLAG 2>/dev/null | awk '/Schemes:/{flag=1;next}/^$/{flag=0}flag' | tr -d ' ' || true)
+          if echo "$AVAILABLE_SCHEMES" | grep -qx "Openfy"; then
+            SCHEME="Openfy"
+          elif [ -n "$AVAILABLE_SCHEMES" ]; then
+            SCHEME=$(echo "$AVAILABLE_SCHEMES" | head -n 1)
+          fi
+          echo "Using container: $CONTAINER_FLAG"
+          echo "Using scheme: $SCHEME"
+
+          mkdir -p build
+          xcodebuild archive \
+            $CONTAINER_FLAG \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Openfy.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS=""
+
+      - name: Package Openfy.ipa & Ad-hoc Sign
+        run: |
+          mkdir -p build/ipa/Payload
+          APP_DIR=$(find build/Openfy.xcarchive/Products/Applications -name "*.app" -maxdepth 1 | head -n 1)
+          if [ -z "$APP_DIR" ]; then
+            echo "::error::No .app directory found in build/Openfy.xcarchive/Products/Applications"
+            exit 1
+          fi
+          echo "Found compiled app bundle at: $APP_DIR"
+          cp -R "$APP_DIR" build/ipa/Payload/Openfy.app
+
+          echo "Ad-hoc signing Payload/Openfy.app for universal sideloading (AltStore, SideStore, TrollStore)..."
+          cd build/ipa
+          codesign --force --deep --sign - Payload/Openfy.app
+
+          echo "Verifying code signature..."
+          codesign -dvvv Payload/Openfy.app || true
+
+          echo "Packaging Openfy.ipa archive..."
+          mkdir -p ../../release-artifacts
+          zip -qr ../../release-artifacts/Openfy.ipa Payload
+          cd ../..
+
+          echo "Validating Openfy.ipa structure:"
+          unzip -l release-artifacts/Openfy.ipa | head -n 15
+
+      - name: Prepare Release Artifacts & Checksums
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          elif [ -f composeApp/build.gradle.kts ] && grep -q 'versionName' composeApp/build.gradle.kts; then
+            RELEASE_TAG="v$(grep -m 1 'versionName =' composeApp/build.gradle.kts | cut -d '"' -f2)"
+          elif [ -f app/build.gradle.kts ] && grep -q 'versionName' app/build.gradle.kts; then
+            RELEASE_TAG="v$(grep -m 1 'versionName =' app/build.gradle.kts | cut -d '"' -f2)"
+          else
+            RELEASE_TAG="v1.2.0"
+          fi
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_ENV
+          cp release-artifacts/Openfy.ipa "release-artifacts/Openfy-${RELEASE_TAG}.ipa"
+
+          echo "Computing SHA-256 hashes..."
+          cd release-artifacts
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum Openfy.ipa > SHA256SUMS-ios.txt
+            sha256sum "Openfy-${RELEASE_TAG}.ipa" >> SHA256SUMS-ios.txt
+          else
+            shasum -a 256 Openfy.ipa > SHA256SUMS-ios.txt
+            shasum -a 256 "Openfy-${RELEASE_TAG}.ipa" >> SHA256SUMS-ios.txt
+          fi
+          echo "Generated SHA256SUMS-ios.txt:"
+          cat SHA256SUMS-ios.txt
+          cd ..
+
+      - name: Upload iOS IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Openfy-iOS-IPA
+          path: release-artifacts/Openfy.ipa
+          retention-days: 30
+
+      - name: Publish iOS Release Assets
+        run: |
+          TAG="${{ env.RELEASE_TAG }}"
+          echo "Target tag: ${TAG}"
+          echo "Ref: ${{ github.ref }}"
+
+          echo "Managing versioned release ${TAG}..."
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} exists. Uploading iOS assets with --clobber..."
+            gh release upload "${TAG}" \
+              release-artifacts/Openfy.ipa \
+              "release-artifacts/Openfy-${TAG}.ipa" \
+              release-artifacts/SHA256SUMS-ios.txt \
+              --clobber
+          else
+            echo "Release ${TAG} does not exist yet. Creating versioned release..."
+            gh release create "${TAG}" \
+              release-artifacts/Openfy.ipa \
+              "release-artifacts/Openfy-${TAG}.ipa" \
+              release-artifacts/SHA256SUMS-ios.txt \
+              --title "Openfy ${TAG} - Cross-Platform (Android & iOS)" \
+              --notes "### 🎵 Openfy ${TAG} - Cross-Platform Release\n\n- **Android APK**: Available in release assets.\n- **iOS IPA**: Sideloadable via AltStore, SideStore, TrollStore, or Sideloadly."
+          fi
+
+          echo "Managing rolling 'latest' release..."
+          if gh release view "latest" >/dev/null 2>&1; then
+            echo "Uploading iOS assets to existing rolling 'latest' release..."
+            gh release upload latest \
+              release-artifacts/Openfy.ipa \
+              release-artifacts/SHA256SUMS-ios.txt \
+              --clobber
+          else
+            echo "Creating rolling 'latest' release with iOS assets..."
+            gh release create latest \
+              release-artifacts/Openfy.ipa \
+              release-artifacts/SHA256SUMS-ios.txt \
+              --title "Openfy Latest Release (Auto-Build)" \
+              --notes "### 🎵 Openfy Latest Release\n\nRolling release of Openfy with direct downloads for Android APK and iOS IPA." \
+              --latest
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

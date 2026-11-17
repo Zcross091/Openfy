@@ -2,8 +2,11 @@
 .gradle/
 build/
 app/build/
+composeApp/build/
+iosApp/build/
 local.properties
 .idea/
+.vscode/
 *.iml
 .DS_Store
 Thumbs.db
@@ -11,10 +14,12 @@ captures/
 .externalNativeBuild
 .cxx
 
-# APKs and Bundles (avoids GitHub 100MB file limit)
+# APKs, IPAs, and Bundles
 *.apk
+*.ipa
 *.aab
 *.dex
+*.xcarchive
 
 # Keystores (allow the default openfy-release.jks so CI can always build signed APKs)
 *.jks

@@ -22,3 +22,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Openfy"
 include(":app")
+include(":composeApp")
