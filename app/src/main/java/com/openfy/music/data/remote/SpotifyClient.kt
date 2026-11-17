@@ -16,6 +16,41 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.Locale
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+
+object SpotifyTotp {
+    private const val RAW_SECRET = ",7/*F(\"rLJ2oxaKL^f+E1xvP@N"
+    const val VERSION = 61
+
+    private val keyBytes by lazy {
+        val rStr = buildString {
+            RAW_SECRET.forEachIndexed { idx, c ->
+                append(c.code xor (idx % 33 + 9))
+            }
+        }
+        rStr.toByteArray(Charsets.UTF_8)
+    }
+
+    fun generateTotp(timestampMs: Long = System.currentTimeMillis()): String {
+        val counter = timestampMs / 1000 / 30
+        val buffer = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN).putLong(counter).array()
+        val mac = Mac.getInstance("HmacSHA1")
+        val secretKey = SecretKeySpec(keyBytes, "HmacSHA1")
+        mac.init(secretKey)
+        val hash = mac.doFinal(buffer)
+        val offset = (hash.last().toInt() and 0x0F)
+        val code = ((hash[offset].toInt() and 0x7F) shl 24) or
+                   ((hash[offset + 1].toInt() and 0xFF) shl 16) or
+                   ((hash[offset + 2].toInt() and 0xFF) shl 8) or
+                   (hash[offset + 3].toInt() and 0xFF)
+        val otp = code % 1000000
+        return String.format(Locale.US, "%06d", otp)
+    }
+}
 
 object SpotifyClient {
     private val client = OkHttpClient()
@@ -42,7 +77,8 @@ object SpotifyClient {
         get() = !accessToken.isNullOrEmpty() || !spDcCookie.isNullOrEmpty()
 
     /**
-     * Exchanges a persistent Spotify web session cookie (sp_dc) for an official Web Player Bearer Access Token.
+     * Exchanges a persistent Spotify web session cookie (sp_dc) for an official Web Player Bearer Access Token
+     * using the reversed TOTP algorithm for /api/token.
      * Enables full private library access (Liked Songs, user playlists, following) with zero Developer App setup.
      */
     suspend fun exchangeCookieForAccessToken(spDc: String): Boolean = withContext(Dispatchers.IO) {
@@ -50,9 +86,11 @@ object SpotifyClient {
         if (cleanCookie.isEmpty()) return@withContext false
 
         try {
+            val totp = SpotifyTotp.generateTotp()
+            val url = "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=$totp&totpServer=unavailable&totpVer=${SpotifyTotp.VERSION}"
             val req = Request.Builder()
-                .url("https://open.spotify.com/get_access_token?reason=transport&productType=web-player")
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
                 .header("Cookie", "sp_dc=$cleanCookie")
                 .header("Referer", "https://open.spotify.com/")
                 .header("Accept", "application/json")
@@ -80,7 +118,42 @@ object SpotifyClient {
     }
 
     /**
-     * Ensures the current bearer token is fresh. If expired, automatically refreshes via stored sp_dc cookie.
+     * Fetches an anonymous Spotify Web Player Bearer Access Token using TOTP.
+     * Allows searching, browsing playlists, and viewing album tracks even when not logged in!
+     */
+    suspend fun fetchAnonymousAccessToken(): String? = withContext(Dispatchers.IO) {
+        try {
+            val totp = SpotifyTotp.generateTotp()
+            val url = "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=$totp&totpServer=unavailable&totpVer=${SpotifyTotp.VERSION}"
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+                .header("Referer", "https://open.spotify.com/")
+                .header("Accept", "application/json")
+                .build()
+
+            val resp = client.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val json = gson.fromJson(resp.body?.string(), JsonObject::class.java)
+                val token = json.get("accessToken")?.asString
+                val expiry = json.get("accessTokenExpirationTimestampMs")?.asLong
+                    ?: (System.currentTimeMillis() + 3600_000L)
+
+                if (!token.isNullOrEmpty()) {
+                    accessToken = token
+                    tokenExpiryMs = expiry
+                    return@withContext token
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        null
+    }
+
+    /**
+     * Ensures the current bearer token is fresh. If expired, automatically refreshes via stored sp_dc cookie
+     * or generates a fresh anonymous token.
      */
     suspend fun ensureFreshToken(): String? = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
@@ -94,7 +167,9 @@ object SpotifyClient {
                 return@withContext accessToken
             }
         }
-        accessToken
+
+        // Fallback to anonymous access token so browsing/searching never fails
+        fetchAnonymousAccessToken() ?: accessToken
     }
 
     private fun extractHighestResSpotifyImage(images: com.google.gson.JsonArray?): String? {

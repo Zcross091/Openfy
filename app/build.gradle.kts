@@ -12,8 +12,8 @@ android {
         applicationId = "com.openfy.music"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -81,6 +81,9 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
+
+    // NewPipeExtractor for battle-tested YouTube stream resolution & cipher deobfuscation
+    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

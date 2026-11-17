@@ -303,22 +303,11 @@ fun AccountSwitcherDialog(
                                     }
                                 } else {
                                     Text(
-                                        text = "Log in with your Google account to sync your YouTube Music library:",
+                                        text = "YouTube & RVX operate as the background streaming engine with zero ads. No Google login required to stream tracks at full quality!",
                                         color = SpotifySubdued,
-                                        fontSize = 11.sp
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
                                     )
-                                    Spacer(modifier = Modifier.height(10.dp))
-
-                                    // Primary: 1-Click Google Sign-In
-                                    Button(
-                                        onClick = { showAuthWebViewForProvider = AccountProvider.YOUTUBE },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242424)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Text("Sign in with Google Account (Web)", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-
                                     Spacer(modifier = Modifier.height(10.dp))
 
                                     Text(

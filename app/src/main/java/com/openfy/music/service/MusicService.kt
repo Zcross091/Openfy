@@ -20,7 +20,7 @@ class MusicService : MediaSessionService() {
 
         // 1. Configure robust streaming HTTP data source with clean range requests
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("com.google.ios.youtube/20.10.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)")
+            .setUserAgent("Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36")
             .setAllowCrossProtocolRedirects(true)
             .setKeepPostFor302Redirects(true)
             .setConnectTimeoutMs(15000)

@@ -264,36 +264,19 @@ fun AccountSwitcherDialog(
                                     }
                                 } else {
                                     Text(
-                                        text = "Log in with your Google account to sync your YouTube Music library:",
+                                        text = "YouTube & RVX operate as the background streaming engine with zero ads. No Google login required to stream tracks at full quality!",
                                         color = SpotifySubdued,
-                                        fontSize = 11.sp
+                                        fontSize = 11.sp,
+                                        lineHeight = 15.sp
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
 
-                                    // Button 1: In-App Google Account Sign-In
-                                    Button(
-                                        onClick = {
-                                            showAuthWebViewForProvider = AccountProvider.YOUTUBE
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242424)),
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, tint = RvxRed, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Sign in with Google Account", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(10.dp))
-
-                                    // Button 2: Direct Google Email linking
+                                    // Optional Google Email linking
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         OutlinedTextField(
                                             value = youtubeEmailInput,
                                             onValueChange = { youtubeEmailInput = it },
-                                            placeholder = { Text("Google Email (user@gmail.com)", fontSize = 11.sp, color = Color.Gray) },
+                                            placeholder = { Text("Display Email (optional)", fontSize = 11.sp, color = Color.Gray) },
                                             modifier = Modifier.weight(1f).height(48.dp),
                                             singleLine = true
                                         )
@@ -308,7 +291,7 @@ fun AccountSwitcherDialog(
                                             colors = ButtonDefaults.buttonColors(containerColor = RvxRed),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Text("Link", color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text("Set", color = White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }

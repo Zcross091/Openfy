@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -17,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.OpenInBrowser
@@ -30,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -39,6 +42,7 @@ import com.openfy.music.data.AccountManager
 import com.openfy.music.data.model.AccountProvider
 import com.openfy.music.ui.theme.SpotifyGreen
 import com.openfy.music.ui.theme.SpotifySubdued
+import kotlinx.coroutines.delay
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -56,6 +60,44 @@ fun AuthWebViewDialog(
     val initialUrl = "https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F"
     var isLoading by remember { mutableStateOf(true) }
     var currentLoadedUrl by remember { mutableStateOf(initialUrl) }
+    var activeWebView by remember { mutableStateOf<WebView?>(null) }
+
+    // Helper: checks all cookie sources and URL state to connect
+    fun attemptConnect(extraCookies: String? = null) {
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.flush()
+
+        val cOpen = cookieManager.getCookie("https://open.spotify.com") ?: ""
+        val cAcc = cookieManager.getCookie("https://accounts.spotify.com") ?: ""
+        val cSpot = cookieManager.getCookie("https://spotify.com") ?: ""
+        val cDot = cookieManager.getCookie(".spotify.com") ?: ""
+        val combined = listOf(cOpen, cAcc, cSpot, cDot, extraCookies ?: "")
+            .filter { it.isNotBlank() }
+            .joinToString("; ")
+
+        val hasSpDc = combined.contains("sp_dc")
+        val onLoggedInAccountPage = (currentLoadedUrl.contains("accounts.spotify.com") && !currentLoadedUrl.contains("login"))
+        val onOpenSpotify = (currentLoadedUrl.contains("open.spotify.com") && !currentLoadedUrl.contains("login"))
+
+        if (hasSpDc || (onLoggedInAccountPage && combined.contains("sp_t")) || (onOpenSpotify && combined.contains("sp_t"))) {
+            AccountManager.setSpotifySession(combined)
+            onSuccess("Connected to Spotify Account!")
+            onDismiss()
+        } else if (onLoggedInAccountPage) {
+            // User reached "Logged in as" on accounts.spotify.com; navigate to open.spotify.com to get sp_dc
+            activeWebView?.loadUrl("https://open.spotify.com/")
+        }
+    }
+
+    // Auto-polling for seamless zero-tap connection as soon as login completes
+    LaunchedEffect(selectedAuthMode) {
+        if (selectedAuthMode == 0) {
+            while (true) {
+                delay(1000)
+                attemptConnect()
+            }
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -64,7 +106,7 @@ fun AuthWebViewDialog(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(12.dp),
             shape = RoundedCornerShape(16.dp),
             color = Color(0xFF181818)
         ) {
@@ -147,73 +189,120 @@ fun AuthWebViewDialog(
                         )
                     }
 
-                    AndroidView(
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)),
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
-                                settings.databaseEnabled = true
-                                settings.useWideViewPort = true
-                                settings.loadWithOverviewMode = true
-                                settings.setSupportMultipleWindows(false) // Prevents popup blank screens
-                                settings.javaScriptCanOpenWindowsAutomatically = true
-                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { ctx ->
+                                WebView(ctx).apply {
+                                    activeWebView = this
+                                    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.useWideViewPort = true
+                                    settings.loadWithOverviewMode = true
+                                    settings.setSupportMultipleWindows(false)
+                                    settings.javaScriptCanOpenWindowsAutomatically = true
+                                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                    settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-                                // Clean standard Android Chrome User-Agent
-                                settings.userAgentString =
-                                    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+                                    // Clean Mobile Chrome User-Agent
+                                    settings.userAgentString =
+                                        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
 
-                                val cookieManager = CookieManager.getInstance()
-                                cookieManager.setAcceptCookie(true)
-                                cookieManager.setAcceptThirdPartyCookies(this, true)
+                                    val cookieManager = CookieManager.getInstance()
+                                    cookieManager.setAcceptCookie(true)
+                                    cookieManager.setAcceptThirdPartyCookies(this, true)
 
-                                webChromeClient = object : WebChromeClient() {
-                                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                        super.onProgressChanged(view, newProgress)
-                                        if (newProgress >= 100) {
+                                    webChromeClient = object : WebChromeClient() {
+                                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                            super.onProgressChanged(view, newProgress)
+                                            if (newProgress >= 100) {
+                                                isLoading = false
+                                            }
+                                        }
+                                    }
+
+                                    webViewClient = object : WebViewClient() {
+                                        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                            val url = request?.url?.toString() ?: return false
+                                            currentLoadedUrl = url
+                                            view?.loadUrl(url)
+                                            return true
+                                        }
+
+                                        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                            super.onPageStarted(view, url, favicon)
+                                            isLoading = true
+                                            url?.let {
+                                                currentLoadedUrl = it
+                                                attemptConnect()
+                                            }
+                                        }
+
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            super.onPageFinished(view, url)
                                             isLoading = false
+                                            url?.let {
+                                                currentLoadedUrl = it
+                                                attemptConnect()
+                                            }
+                                            view?.evaluateJavascript("document.cookie") { jsCookie ->
+                                                val clean = jsCookie?.trim('"', '\'')
+                                                if (!clean.isNullOrEmpty() && clean != "null") {
+                                                    attemptConnect(clean)
+                                                }
+                                            }
                                         }
                                     }
+                                    loadUrl(initialUrl)
                                 }
-
-                                webViewClient = object : WebViewClient() {
-                                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                        super.onPageStarted(view, url, favicon)
-                                        isLoading = true
-                                        url?.let { currentLoadedUrl = it }
-                                        checkLoginStatus(url)
-                                    }
-
-                                    override fun onPageFinished(view: WebView?, url: String?) {
-                                        super.onPageFinished(view, url)
-                                        isLoading = false
-                                        url?.let { currentLoadedUrl = it }
-                                        checkLoginStatus(url)
-                                    }
-
-                                    private fun checkLoginStatus(currentUrl: String?) {
-                                        if (currentUrl == null) return
-                                        cookieManager.flush()
-
-                                        val spotCookies = cookieManager.getCookie("https://open.spotify.com") ?: ""
-                                        val spotAccCookies = cookieManager.getCookie("https://accounts.spotify.com") ?: ""
-                                        val combinedSpot = "$spotCookies; $spotAccCookies"
-
-                                        if (combinedSpot.contains("sp_dc") || (currentUrl.contains("open.spotify.com") && !currentUrl.contains("login"))) {
-                                            AccountManager.setSpotifySession(combinedSpot)
-                                            onSuccess("Connected to Spotify Account!")
-                                            onDismiss()
-                                        }
-                                    }
-                                }
-                                loadUrl(initialUrl)
                             }
+                        )
+                    }
+
+                    // Bottom Action Bar: Instant Connect Button
+                    Surface(
+                        color = Color(0xFF1E1E1E),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    activeWebView?.evaluateJavascript("document.cookie") { jsCookie ->
+                                        val clean = jsCookie?.trim('"', '\'')
+                                        attemptConnect(clean)
+                                    }
+                                    attemptConnect()
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(46.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen, contentColor = Color.Black),
+                                shape = RoundedCornerShape(23.dp)
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("I'm Logged In - Connect Openfy", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+                            Text(
+                                text = "When you see 'Logged in as' or your profile above, tap to finish connecting.",
+                                color = SpotifySubdued,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
-                    )
+                    }
                 } else {
                     // --- MODE 1: QUICK COOKIE PASTE (sp_dc) ---
                     Column(
@@ -232,8 +321,8 @@ fun AuthWebViewDialog(
                         Text(
                             text = "Sign in via your mobile browser (Chrome/Brave) without any WebView restrictions:\n\n" +
                                     "1. Tap 'Open Spotify in Browser' below and log into Spotify.\n" +
-                                    "2. Open your browser settings or inspect to copy your 'sp_dc' cookie.\n" +
-                                    "3. Tap 'Paste from Clipboard & Connect' below.",
+                                    "2. Copy your 'sp_dc' cookie from browser settings or inspect.\n" +
+                                    "3. Tap 'Paste & Connect' below.",
                             color = SpotifySubdued,
                             fontSize = 13.sp,
                             lineHeight = 20.sp

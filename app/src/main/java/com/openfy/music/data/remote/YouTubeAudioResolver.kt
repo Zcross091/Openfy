@@ -249,8 +249,13 @@ object YouTubeAudioResolver {
 
         val quality = SettingsManager.audioQuality.value
 
-        // Tier 1: IOS (Client 5, v20.10.1) - Primary reliable unciphered direct extractor (Opus 160k / AAC 128k)
-        var streamUrl = fetchIosStreamUrl(videoId, quality)
+        // Tier 0: Battle-tested NewPipeExtractor (Deobfuscates YouTube signatures & avoids 403 chunk drops)
+        var streamUrl = withContext(Dispatchers.IO) { fetchNewPipeStreamUrl(videoId, quality) }
+
+        // Tier 1: IOS (Client 5, v20.10.1) fallback
+        if (streamUrl == null) {
+            streamUrl = fetchIosStreamUrl(videoId, quality)
+        }
 
         // Tier 2: ANDROID_MUSIC (Client 21)
         if (streamUrl == null) {
@@ -346,6 +351,29 @@ object YouTubeAudioResolver {
             e.printStackTrace()
         }
         null
+    }
+
+    private fun fetchNewPipeStreamUrl(videoId: String, quality: AudioQuality): String? {
+        return try {
+            NewPipeDownloader.init()
+            val streamInfo = org.schabi.newpipe.extractor.stream.StreamInfo.getInfo(
+                org.schabi.newpipe.extractor.ServiceList.YouTube,
+                "https://www.youtube.com/watch?v=$videoId"
+            )
+            val audioStreams = streamInfo.audioStreams
+            if (!audioStreams.isNullOrEmpty()) {
+                val targetStream = audioStreams.find { it.itag == quality.targetItag }
+                    ?: audioStreams.find { it.itag == quality.fallbackItag }
+                    ?: audioStreams.maxByOrNull { it.averageBitrate }
+                    ?: audioStreams.firstOrNull()
+                targetStream?.content ?: targetStream?.url
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
     }
 
     private suspend fun fetchIosStreamUrl(

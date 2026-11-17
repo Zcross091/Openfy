@@ -63,9 +63,10 @@ actual fun AuthWebViewDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (provider == AccountProvider.YOUTUBE) "Google Sign-In (YouTube)" else "Spotify Sign-In",
+                        text = "Connect Spotify Account",
                         color = Color.White,
-                        fontSize = 16.sp
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = {

@@ -32,6 +32,126 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
+object PureSha1 {
+    private fun rotateLeft(n: Int, bits: Int): Int = (n shl bits) or (n ushr (32 - bits))
+
+    fun sha1(bytes: ByteArray): ByteArray {
+        var h0 = 0x67452301
+        var h1 = -0x10325477
+        var h2 = -0x67452302
+        var h3 = 0x10325476
+        var h4 = -0x3C2D1E10
+
+        val msgLenBits = bytes.size.toLong() * 8
+        val paddingLength = if (bytes.size % 64 < 56) 56 - (bytes.size % 64) else 120 - (bytes.size % 64)
+        val padded = ByteArray(bytes.size + paddingLength + 8)
+        bytes.copyInto(padded)
+        padded[bytes.size] = 0x80.toByte()
+
+        for (i in 0 until 8) {
+            padded[padded.size - 1 - i] = ((msgLenBits ushr (i * 8)) and 0xFF).toByte()
+        }
+
+        val w = IntArray(80)
+        for (chunk in padded.indices step 64) {
+            for (i in 0 until 16) {
+                val j = chunk + i * 4
+                w[i] = ((padded[j].toInt() and 0xFF) shl 24) or
+                        ((padded[j + 1].toInt() and 0xFF) shl 16) or
+                        ((padded[j + 2].toInt() and 0xFF) shl 8) or
+                        (padded[j + 3].toInt() and 0xFF)
+            }
+            for (i in 16 until 80) {
+                w[i] = rotateLeft(w[i - 3] xor w[i - 8] xor w[i - 14] xor w[i - 16], 1)
+            }
+
+            var a = h0
+            var b = h1
+            var c = h2
+            var d = h3
+            var e = h4
+
+            for (i in 0 until 80) {
+                val (f, k) = when (i) {
+                    in 0..19 -> ((b and c) or (b.inv() and d)) to 0x5A827999
+                    in 20..39 -> (b xor c xor d) to 0x6ED9EBA1
+                    in 40..59 -> ((b and c) or (b and d) or (c and d)) to -0x70E44324
+                    else -> (b xor c xor d) to -0x359D3E2A
+                }
+                val temp = rotateLeft(a, 5) + f + e + k + w[i]
+                e = d
+                d = c
+                c = rotateLeft(b, 30)
+                b = a
+                a = temp
+            }
+
+            h0 += a
+            h1 += b
+            h2 += c
+            h3 += d
+            h4 += e
+        }
+
+        val result = ByteArray(20)
+        for (i in 0 until 4) {
+            result[i] = ((h0 ushr (24 - i * 8)) and 0xFF).toByte()
+            result[i + 4] = ((h1 ushr (24 - i * 8)) and 0xFF).toByte()
+            result[i + 8] = ((h2 ushr (24 - i * 8)) and 0xFF).toByte()
+            result[i + 12] = ((h3 ushr (24 - i * 8)) and 0xFF).toByte()
+            result[i + 16] = ((h4 ushr (24 - i * 8)) and 0xFF).toByte()
+        }
+        return result
+    }
+
+    fun hmacSha1(key: ByteArray, message: ByteArray): ByteArray {
+        val blockSize = 64
+        val paddedKey = ByteArray(blockSize)
+        if (key.size > blockSize) {
+            val hashed = sha1(key)
+            hashed.copyInto(paddedKey)
+        } else {
+            key.copyInto(paddedKey)
+        }
+
+        val oKeyPad = ByteArray(blockSize) { (paddedKey[it].toInt() xor 0x5C).toByte() }
+        val iKeyPad = ByteArray(blockSize) { (paddedKey[it].toInt() xor 0x36).toByte() }
+
+        val inner = sha1(iKeyPad + message)
+        return sha1(oKeyPad + inner)
+    }
+}
+
+object SpotifyTotp {
+    private const val RAW_SECRET = ",7/*F(\"rLJ2oxaKL^f+E1xvP@N"
+    const val VERSION = 61
+
+    private val keyBytes by lazy {
+        val rStr = buildString {
+            RAW_SECRET.forEachIndexed { idx, c ->
+                append(c.code xor (idx % 33 + 9))
+            }
+        }
+        rStr.encodeToByteArray()
+    }
+
+    fun generateTotp(timestampMs: Long = getTimeMillis()): String {
+        val counter = timestampMs / 1000 / 30
+        val buffer = ByteArray(8)
+        for (i in 0 until 8) {
+            buffer[7 - i] = ((counter ushr (i * 8)) and 0xFF).toByte()
+        }
+        val hash = PureSha1.hmacSha1(keyBytes, buffer)
+        val offset = (hash.last().toInt() and 0x0F)
+        val code = ((hash[offset].toInt() and 0x7F) shl 24) or
+                   ((hash[offset + 1].toInt() and 0xFF) shl 16) or
+                   ((hash[offset + 2].toInt() and 0xFF) shl 8) or
+                   (hash[offset + 3].toInt() and 0xFF)
+        val otp = (code % 1000000).toString().padStart(6, '0')
+        return otp
+    }
+}
+
 object SpotifyClient {
     private val settings get() = SettingsManager.settings
 
@@ -66,8 +186,10 @@ object SpotifyClient {
         if (cleanCookie.isEmpty()) return@withContext false
 
         try {
-            val resp = NetworkClient.client.get("https://open.spotify.com/get_access_token?reason=transport&productType=web-player") {
-                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
+            val totp = SpotifyTotp.generateTotp()
+            val url = "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=$totp&totpServer=unavailable&totpVer=${SpotifyTotp.VERSION}"
+            val resp = NetworkClient.client.get(url) {
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
                 header("Cookie", "sp_dc=$cleanCookie")
                 header("Referer", "https://open.spotify.com/")
                 header("Accept", "application/json")
@@ -94,6 +216,35 @@ object SpotifyClient {
         false
     }
 
+    suspend fun fetchAnonymousAccessToken(): String? = withContext(Dispatchers.IO) {
+        try {
+            val totp = SpotifyTotp.generateTotp()
+            val url = "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=$totp&totpServer=unavailable&totpVer=${SpotifyTotp.VERSION}"
+            val resp = NetworkClient.client.get(url) {
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+                header("Referer", "https://open.spotify.com/")
+                header("Accept", "application/json")
+            }
+
+            if (resp.status.value in 200..299) {
+                val body = resp.bodyAsText()
+                val json = NetworkClient.json.parseToJsonElement(body).jsonObject
+                val token = json["accessToken"]?.jsonPrimitive?.contentOrNull
+                val expiry = json["accessTokenExpirationTimestampMs"]?.jsonPrimitive?.longOrNull
+                    ?: (getTimeMillis() + 3600_000L)
+
+                if (!token.isNullOrEmpty()) {
+                    accessToken = token
+                    tokenExpiryMs = expiry
+                    return@withContext token
+                }
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+        null
+    }
+
     suspend fun ensureFreshToken(): String? = withContext(Dispatchers.IO) {
         val now = getTimeMillis()
         if (!accessToken.isNullOrEmpty() && now < (tokenExpiryMs - 60_000L)) {
@@ -106,7 +257,8 @@ object SpotifyClient {
                 return@withContext accessToken
             }
         }
-        accessToken
+
+        fetchAnonymousAccessToken() ?: accessToken
     }
 
     private fun extractHighestResSpotifyImage(images: JsonArray?): String? {
