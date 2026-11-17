@@ -55,9 +55,6 @@ kotlin {
             implementation(libs.coil3.compose)
             implementation(libs.coil3.network.ktor3)
 
-            // Multiplatform Settings
-            implementation(libs.multiplatform.settings)
-            implementation(libs.multiplatform.settings.no.arg)
         }
 
         androidMain.dependencies {

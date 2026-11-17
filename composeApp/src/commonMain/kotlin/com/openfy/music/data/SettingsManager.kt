@@ -1,8 +1,33 @@
 package com.openfy.music.data
 
-import com.russhwolf.settings.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+
+interface Settings {
+    fun getStringOrNull(key: String): String?
+    fun getString(key: String, defaultValue: String): String
+    fun putString(key: String, value: String)
+    fun getBoolean(key: String, defaultValue: Boolean): Boolean
+    fun putBoolean(key: String, value: Boolean)
+    fun getLong(key: String, defaultValue: Long): Long
+    fun putLong(key: String, value: Long)
+    fun remove(key: String)
+    fun clear()
+}
+
+class MapSettings : Settings {
+    private val map = mutableMapOf<String, Any>()
+
+    override fun getStringOrNull(key: String): String? = map[key] as? String
+    override fun getString(key: String, defaultValue: String): String = (map[key] as? String) ?: defaultValue
+    override fun putString(key: String, value: String) { map[key] = value }
+    override fun getBoolean(key: String, defaultValue: Boolean): Boolean = (map[key] as? Boolean) ?: defaultValue
+    override fun putBoolean(key: String, value: Boolean) { map[key] = value }
+    override fun getLong(key: String, defaultValue: Long): Long = (map[key] as? Long) ?: defaultValue
+    override fun putLong(key: String, value: Long) { map[key] = value }
+    override fun remove(key: String) { map.remove(key) }
+    override fun clear() { map.clear() }
+}
 
 enum class AudioQuality(val title: String, val description: String, val targetItag: Int, val fallbackItag: Int) {
     AUTO("Auto (Recommended)", "Best quality available (Opus ~160k on Android, AAC ~130k on iOS)", 251, 140),
@@ -12,6 +37,7 @@ enum class AudioQuality(val title: String, val description: String, val targetIt
 }
 
 object SettingsManager {
+    private val defaultSettings: Settings = MapSettings()
     private var customSettings: Settings? = null
 
     fun initSettings(settings: Settings) {
@@ -20,7 +46,7 @@ object SettingsManager {
     }
 
     val settings: Settings
-        get() = customSettings ?: Settings()
+        get() = customSettings ?: defaultSettings
 
     private val _audioQuality = MutableStateFlow(loadAudioQuality())
     val audioQuality = _audioQuality.asStateFlow()
@@ -54,7 +80,7 @@ object SettingsManager {
         try {
             settings.putString("audio_quality", quality.name)
         } catch (e: Exception) {
-            // Ignore write errors if uninitialized
+            // Ignore write errors
         }
         _audioQuality.value = quality
     }
