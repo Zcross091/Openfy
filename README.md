@@ -20,6 +20,9 @@
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose"/>
   <img src="https://img.shields.io/badge/Audio-AndroidX%20Media3%20ExoPlayer-FF0000?logo=youtube&logoColor=white" alt="ExoPlayer"/>
   <img src="https://img.shields.io/badge/Audio-Ad--Free%20Opus%20160k-7c3aed" alt="Ad-Free"/>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License"/>
+  </a>
 </p>
 
 <p align="center">
@@ -170,6 +173,13 @@ Openfy/
 
 ---
 
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome!
+Please read through our [**Contributing Guidelines (CONTRIBUTING.md)**](CONTRIBUTING.md) to get started on setting up your local environment and submitting pull requests.
+
+---
+
 ## 📜 License
 
-MIT License. Built for educational and personal research purposes.
+This project is licensed under the [**MIT License**](LICENSE) - see the [LICENSE](LICENSE) file for details. Built for educational and personal research purposes.
