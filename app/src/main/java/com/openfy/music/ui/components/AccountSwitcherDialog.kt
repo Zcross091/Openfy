@@ -49,10 +49,6 @@ fun AccountSwitcherDialog(
 
     var showAuthWebViewForProvider by remember { mutableStateOf<AccountProvider?>(null) }
 
-    var showSpotifyEmailInput by remember { mutableStateOf(false) }
-    var spotifyEmailInput by remember { mutableStateOf("") }
-    var spotifyTokenInput by remember { mutableStateOf("") }
-
     var youtubeEmailInput by remember { mutableStateOf("") }
 
     if (showAuthWebViewForProvider != null) {
@@ -193,83 +189,36 @@ fun AccountSwitcherDialog(
                                     }
                                 } else {
                                     Text(
-                                        text = "Choose how to log into your Spotify account:",
+                                        text = "Connect your personal Spotify account to sync your Liked Songs and playlists:",
                                         color = SpotifySubdued,
                                         fontSize = 11.sp
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
 
-                                    // Button 1: In-App Web Login for Spotify (Supports Google Sign-In)
+                                    // Primary Button: 1-Click In-App Web Login for Spotify
                                     Button(
                                         onClick = {
                                             showAuthWebViewForProvider = AccountProvider.SPOTIFY
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242424)),
+                                        colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen),
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, tint = White, modifier = Modifier.size(16.dp))
+                                            Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, tint = Black, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Log in with Google Account / Web", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            Text("Log in with Spotify (Web)", color = Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(6.dp))
 
-                                    // Button 2: Email Login for Spotify
-                                    OutlinedButton(
-                                        onClick = { showSpotifyEmailInput = !showSpotifyEmailInput },
-                                        shape = RoundedCornerShape(8.dp),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(imageVector = Icons.Default.Email, contentDescription = null, tint = SpotifyGreen, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Log in with Spotify Email / Token", color = SpotifyGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-
-                                    if (showSpotifyEmailInput) {
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        OutlinedTextField(
-                                            value = spotifyEmailInput,
-                                            onValueChange = { spotifyEmailInput = it },
-                                            placeholder = { Text("Spotify Email (e.g. user@gmail.com)", fontSize = 11.sp, color = Color.Gray) },
-                                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                                            singleLine = true
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        OutlinedTextField(
-                                            value = spotifyTokenInput,
-                                            onValueChange = { spotifyTokenInput = it },
-                                            placeholder = { Text("Access Token or Password", fontSize = 11.sp, color = Color.Gray) },
-                                            modifier = Modifier.fillMaxWidth().height(50.dp),
-                                            singleLine = true
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Button(
-                                            onClick = {
-                                                if (spotifyEmailInput.isNotBlank() || spotifyTokenInput.isNotBlank()) {
-                                                    AccountManager.setSpotifyEmailAccount(
-                                                        email = if (spotifyEmailInput.isNotBlank()) spotifyEmailInput else "spotify_user",
-                                                        token = spotifyTokenInput.ifBlank { null }
-                                                    )
-                                                    scope.launch {
-                                                        SpotifyClient.fetchProfile()
-                                                    }
-                                                    spotifyEmailInput = ""
-                                                    spotifyTokenInput = ""
-                                                    showSpotifyEmailInput = false
-                                                }
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen),
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier.fillMaxWidth()
-                                        ) {
-                                            Text("Link Spotify Account", color = Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
+                                    Text(
+                                        text = "Opens Spotify Web Login. Automatically detects your login, syncs Liked Songs, and enables adding songs to any playlist!",
+                                        color = Color.Gray,
+                                        fontSize = 10.sp,
+                                        lineHeight = 14.sp
+                                    )
                                 }
                             }
                         }

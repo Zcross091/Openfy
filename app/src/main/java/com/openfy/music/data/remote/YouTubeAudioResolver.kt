@@ -7,6 +7,7 @@ import com.openfy.music.OpenfyApplication
 import com.openfy.music.data.AccountManager
 import com.openfy.music.data.AudioQuality
 import com.openfy.music.data.SettingsManager
+import com.openfy.music.data.model.Album
 import com.openfy.music.data.model.Artist
 import com.openfy.music.data.model.Playlist
 import com.openfy.music.data.model.Track
@@ -101,6 +102,59 @@ object YouTubeAudioResolver {
 
     suspend fun searchTracks(query: String, limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
         val tracks = mutableListOf<Track>()
+
+        // 1. Hybrid Search Tier 1: Query Oracle Cloud backend server cache (<20ms response time)
+        try {
+            val backendUrl = "http://140.245.226.77/api/search?q=${java.net.URLEncoder.encode(query, "UTF-8")}"
+            val fastClient = client.newBuilder()
+                .connectTimeout(3, TimeUnit.SECONDS)
+                .readTimeout(3, TimeUnit.SECONDS)
+                .build()
+
+            val req = Request.Builder()
+                .url(backendUrl)
+                .header("User-Agent", "Openfy-Android/1.0")
+                .build()
+
+            val resp = fastClient.newCall(req).execute()
+            if (resp.isSuccessful) {
+                val body = resp.body?.string() ?: ""
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val trackArray = json.getAsJsonArray("tracks")
+                if (trackArray != null && trackArray.size() > 0) {
+                    for (item in trackArray) {
+                        if (!item.isJsonObject) continue
+                        val obj = item.asJsonObject
+                        val id = obj.get("id")?.asString ?: continue
+                        val title = obj.get("title")?.asString ?: "Unknown"
+                        val artist = obj.get("artist")?.asString ?: "Unknown Artist"
+                        val cover = obj.get("coverUrl")?.asString
+                        val duration = obj.get("durationSeconds")?.asInt ?: 0
+
+                        tracks.add(
+                            Track(
+                                id = id,
+                                title = title,
+                                artists = listOf(Artist(null, artist)),
+                                album = Album(name = title, coverUrl = cover),
+                                durationSeconds = duration,
+                                coverUrl = cover,
+                                source = "youtube",
+                                youtubeId = id
+                            )
+                        )
+                        if (tracks.size >= limit) break
+                    }
+                    if (tracks.isNotEmpty()) {
+                        return@withContext tracks
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Backend offline or timeout: seamlessly fall back to on-device InnerTube
+        }
+
+        // 2. Hybrid Search Tier 2: Local On-Device InnerTube Scraper Fallback
         try {
             val visitorData = getOrFetchVisitorData()
             val url = "https://music.youtube.com/youtubei/v1/search?prettyPrint=false"
@@ -149,10 +203,10 @@ object YouTubeAudioResolver {
     }
 
     /**
-     * Resolves the full-length audio stream for a track using a 3-tier resilient fallback chain:
-     * Tier 1: VISIONOS (Apple Vision Pro) - Direct unciphered GoogleVideo URLs
-     * Tier 2: TVHTML5_SIMPLY (Cobalt Client 75) - Standalone fallback
-     * Tier 3: WEB_REMIX (Client 67) - Solved dynamically via HeadlessCipherSolver
+     * Resolves the full-length audio stream for a track using an unthrottled 3-tier fallback chain:
+     * Tier 1: WEB_REMIX (Official Web Player) with dynamic SignatureTimestamp (STS) - Solves CDN 50s throttle
+     * Tier 2: VISIONOS (Apple Vision Pro) - Direct unciphered GoogleVideo URLs
+     * Tier 3: TVHTML5_SIMPLY (Cobalt Client 75) - Standalone fallback
      */
     suspend fun resolveStreamUrl(track: Track): String? = withContext(Dispatchers.IO) {
         val cacheKey = track.youtubeId ?: track.id
@@ -170,23 +224,23 @@ object YouTubeAudioResolver {
         val visitorData = getOrFetchVisitorData()
         val quality = SettingsManager.audioQuality.value
 
-        // Tier 1: Primary Resolver (VISIONOS Client 101)
-        var streamUrl = fetchVisionOsStreamUrl(videoId, visitorData, quality)
+        // Tier 1: Primary Resolver -> WEB_REMIX with dynamic SignatureTimestamp (STS)
+        var streamUrl = fetchWebRemixStreamUrl(videoId, visitorData, quality)
 
-        // Tier 1.5: Self-heal retry with fresh visitorData if first attempt failed
+        // Tier 2: Fallback to VISIONOS (Client 101)
+        if (streamUrl == null) {
+            streamUrl = fetchVisionOsStreamUrl(videoId, visitorData, quality)
+        }
+
+        // Tier 2.5: Self-heal retry with fresh visitorData if needed
         if (streamUrl == null) {
             val freshVisitorData = getOrFetchVisitorData(forceRefresh = true)
             streamUrl = fetchVisionOsStreamUrl(videoId, freshVisitorData, quality)
         }
 
-        // Tier 2: Fallback to TVHTML5_SIMPLY (Client 75)
+        // Tier 3: Fallback to TVHTML5_SIMPLY (Client 75)
         if (streamUrl == null) {
             streamUrl = fetchTvHtml5SimplyStreamUrl(videoId, visitorData, quality)
-        }
-
-        // Tier 3: Fallback to WEB_REMIX with HeadlessCipherSolver
-        if (streamUrl == null) {
-            streamUrl = fetchWebRemixStreamUrl(videoId, visitorData, quality)
         }
 
         if (streamUrl != null) {
@@ -342,6 +396,8 @@ object YouTubeAudioResolver {
     ): String? = withContext(Dispatchers.IO) {
         try {
             val playerUrl = "https://music.youtube.com/youtubei/v1/player?prettyPrint=false"
+            val sts = HeadlessCipherSolver.getOrFetchSignatureTimestamp()
+
             val payload = JsonObject().apply {
                 val context = JsonObject().apply {
                     val clientObj = JsonObject().apply {
@@ -357,17 +413,44 @@ object YouTubeAudioResolver {
                 }
                 add("context", context)
                 addProperty("videoId", videoId)
+
+                // Mandatory SignatureTimestamp (STS) bypasses CDN 1MB / 50-second throttling
+                if (sts > 0) {
+                    val playbackContext = JsonObject().apply {
+                        val contentPlaybackContext = JsonObject().apply {
+                            addProperty("signatureTimestamp", sts)
+                        }
+                        add("contentPlaybackContext", contentPlaybackContext)
+                    }
+                    add("playbackContext", playbackContext)
+                }
             }
 
-            val req = Request.Builder()
+            val reqBuilder = Request.Builder()
                 .url(playerUrl)
                 .post(payload.toString().toRequestBody(jsonMediaType))
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                .header("Content-Type", "application/json")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36")
                 .header("Origin", "https://music.youtube.com")
                 .header("Referer", "https://music.youtube.com/")
-                .build()
+                .header("X-YouTube-Client-Name", "67")
+                .header("X-YouTube-Client-Version", "1.20241110.01.00")
 
-            val response = client.newCall(req).execute()
+            if (!visitorData.isNullOrEmpty()) {
+                reqBuilder.header("x-goog-visitor-id", visitorData)
+            }
+
+            // Attach user's Google YouTube cookies if logged in
+            val cookie = AccountManager.youtubeCookie
+            if (!cookie.isNullOrEmpty()) {
+                reqBuilder.header("Cookie", cookie)
+                val authHeader = AccountManager.getSapisidHash()
+                if (!authHeader.isNullOrEmpty()) {
+                    reqBuilder.header("Authorization", authHeader)
+                }
+            }
+
+            val response = client.newCall(reqBuilder.build()).execute()
             if (response.isSuccessful) {
                 val body = response.body?.string() ?: ""
                 val json = gson.fromJson(body, JsonObject::class.java)

@@ -45,6 +45,7 @@ fun NowPlayingSheet(
     val activeProvider by AccountManager.activeProvider.collectAsState()
 
     val scope = rememberCoroutineScope()
+    var showAddToPlaylistSheet by remember { mutableStateOf(false) }
 
     if (currentTrack == null) return
 
@@ -170,19 +171,34 @@ fun NowPlayingSheet(
                             )
                         }
 
-                        IconButton(
-                            onClick = {
-                                currentTrack?.let {
-                                    scope.launch { AccountManager.toggleLike(it) }
-                                }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // Add to Playlist (+) button
+                            IconButton(
+                                onClick = { showAddToPlaylistSheet = true }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AddCircleOutline,
+                                    contentDescription = "Add to playlist",
+                                    tint = SpotifySubdued,
+                                    modifier = Modifier.size(26.dp)
+                                )
                             }
-                        ) {
-                            Icon(
-                                imageVector = if (currentTrack?.isLiked == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = "Like",
-                                tint = if (currentTrack?.isLiked == true) SpotifyGreen else SpotifySubdued,
-                                modifier = Modifier.size(28.dp)
-                            )
+
+                            // 1-Tap Save to Liked Songs (Heart)
+                            IconButton(
+                                onClick = {
+                                    currentTrack?.let {
+                                        scope.launch { AccountManager.toggleLike(it) }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = if (currentTrack?.isLiked == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                    contentDescription = "Like",
+                                    tint = if (currentTrack?.isLiked == true) SpotifyGreen else SpotifySubdued,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
                         }
                     }
 
@@ -347,5 +363,12 @@ fun NowPlayingSheet(
                 }
             }
         }
+    }
+
+    if (showAddToPlaylistSheet && currentTrack != null) {
+        AddToPlaylistSheet(
+            track = currentTrack!!,
+            onDismiss = { showAddToPlaylistSheet = false }
+        )
     }
 }

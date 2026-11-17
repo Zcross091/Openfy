@@ -83,8 +83,11 @@ fun AuthWebViewDialog(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.databaseEnabled = true
-                            // Chrome Mobile User-Agent prevents Google disallowed_useragent block
-                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.6613.127 Mobile Safari/537.36"
+                            settings.useWideViewPort = true
+                            settings.loadWithOverviewMode = true
+                            settings.javaScriptCanOpenWindowsAutomatically = true
+                            // Chrome Desktop User-Agent prevents Google disallowed_useragent block
+                            settings.userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 
                             val cookieManager = CookieManager.getInstance()
                             cookieManager.setAcceptCookie(true)
@@ -105,17 +108,26 @@ fun AuthWebViewDialog(
 
                                 private fun checkLoginStatus(currentUrl: String?) {
                                     if (currentUrl == null) return
+                                    cookieManager.flush()
+
                                     if (provider == AccountProvider.YOUTUBE) {
                                         val ytCookies = cookieManager.getCookie("https://music.youtube.com") ?: ""
-                                        if (ytCookies.contains("SAPISID") || ytCookies.contains("__Secure-3PAPISID")) {
-                                            AccountManager.setYouTubeGoogleCookies(ytCookies)
+                                        val googleCookies = cookieManager.getCookie("https://accounts.google.com") ?: ""
+                                        val ytRootCookies = cookieManager.getCookie("https://www.youtube.com") ?: ""
+                                        val combinedCookies = "$ytCookies; $googleCookies; $ytRootCookies"
+
+                                        if (combinedCookies.contains("SAPISID") || combinedCookies.contains("__Secure-3PAPISID") || (combinedCookies.contains("SID=") && currentUrl.contains("music.youtube.com"))) {
+                                            AccountManager.setYouTubeGoogleCookies(combinedCookies)
                                             onSuccess("Connected to YouTube Music via Google Account!")
                                             onDismiss()
                                         }
                                     } else if (provider == AccountProvider.SPOTIFY) {
                                         val spotCookies = cookieManager.getCookie("https://open.spotify.com") ?: ""
-                                        if (spotCookies.contains("sp_dc") || currentUrl.contains("open.spotify.com")) {
-                                            AccountManager.setSpotifySession(spotCookies)
+                                        val spotAccCookies = cookieManager.getCookie("https://accounts.spotify.com") ?: ""
+                                        val combinedSpot = "$spotCookies; $spotAccCookies"
+
+                                        if (combinedSpot.contains("sp_dc") || (currentUrl.contains("open.spotify.com") && !currentUrl.contains("login"))) {
+                                            AccountManager.setSpotifySession(combinedSpot)
                                             onSuccess("Connected to Spotify Account!")
                                             onDismiss()
                                         }

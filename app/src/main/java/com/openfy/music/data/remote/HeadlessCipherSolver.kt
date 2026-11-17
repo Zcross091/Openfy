@@ -28,6 +28,8 @@ object HeadlessCipherSolver {
     private var headlessWebView: WebView? = null
     private var cachedBaseJsUrl: String? = null
     private var cachedDecipherJsCode: String? = null
+    private var cachedNTransformJsCode: String? = null
+    private var cachedSignatureTimestamp: Int = 20768 // Valid STS fallback
 
     // In-memory cache for resolved ciphers to avoid redundant script executions
     private val cipherCache = ConcurrentHashMap<String, String>()
@@ -44,6 +46,38 @@ object HeadlessCipherSolver {
                 e.printStackTrace()
             }
         }
+    }
+
+    /**
+     * Retrieves or scrapes the current YouTube player signatureTimestamp (STS).
+     * Mandatory for unthrottled WEB_REMIX streaming.
+     */
+    suspend fun getOrFetchSignatureTimestamp(): Int = withContext(Dispatchers.IO) {
+        if (cachedSignatureTimestamp > 0 && cachedSignatureTimestamp != 20768) {
+            return@withContext cachedSignatureTimestamp
+        }
+        val baseJsUrl = findOrFetchBaseJsUrl()
+        if (baseJsUrl != null) {
+            try {
+                val req = Request.Builder()
+                    .url(baseJsUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .build()
+                val resp = client.newCall(req).execute()
+                if (resp.isSuccessful) {
+                    val js = resp.body?.string() ?: ""
+                    val mSts = Pattern.compile("signatureTimestamp[:=](\\d+)").matcher(js)
+                    if (mSts.find()) {
+                        val sts = mSts.group(1)?.toIntOrNull() ?: 20768
+                        cachedSignatureTimestamp = sts
+                        return@withContext sts
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        cachedSignatureTimestamp
     }
 
     /**
@@ -115,7 +149,7 @@ object HeadlessCipherSolver {
             val resp = client.newCall(req).execute()
             if (resp.isSuccessful) {
                 val html = resp.body?.string() ?: ""
-                val matcher = Pattern.compile("script\\s+src=\"([^\"]*player_ias\\.vflset[^\"]*base\\.js)\"").matcher(html)
+                val matcher = Pattern.compile("(/s/player/[a-zA-Z0-9_\\-]+/player_[a-zA-Z0-9_\\.]+/base\\.js)").matcher(html)
                 if (matcher.find()) {
                     var scriptPath = matcher.group(1) ?: ""
                     if (scriptPath.startsWith("/")) {
@@ -129,8 +163,8 @@ object HeadlessCipherSolver {
             e.printStackTrace()
         }
 
-        // Fallback to standard base.js endpoint
-        val fallback = "https://www.youtube.com/s/player/2a0614a2/player_ias.vflset/en_US/base.js"
+        // Modern YouTube Music base.js fallback
+        val fallback = "https://music.youtube.com/s/player/ad8d59ae/player_es6.vflset/en_GB/base.js"
         cachedBaseJsUrl = fallback
         fallback
     }
@@ -192,7 +226,7 @@ object HeadlessCipherSolver {
     }
 
     private fun getOrFetchNTransformCode(baseJsUrl: String): String? {
-        // Lightweight n-transform solver wrapper
+        if (cachedNTransformJsCode != null) return cachedNTransformJsCode
         return null
     }
 
@@ -231,6 +265,36 @@ object HeadlessCipherSolver {
     }
 
     private suspend fun evaluateNTransformOnWebView(jsCode: String, nParam: String): String? {
-        return null
+        return withTimeoutOrNull(1000L) {
+            val deferred = CompletableDeferred<String?>()
+            mainHandler.post {
+                val webView = headlessWebView
+                if (webView == null) {
+                    deferred.complete(null)
+                    return@post
+                }
+
+                val script = """
+                    (function() {
+                        try {
+                            $jsCode
+                            return solveN('$nParam');
+                        } catch (e) {
+                            return null;
+                        }
+                    })();
+                """.trimIndent()
+
+                webView.evaluateJavascript(script) { result ->
+                    if (result != null && result != "null" && result != "\"\"") {
+                        val clean = result.trim('"')
+                        deferred.complete(clean)
+                    } else {
+                        deferred.complete(null)
+                    }
+                }
+            }
+            deferred.await()
+        }
     }
 }
