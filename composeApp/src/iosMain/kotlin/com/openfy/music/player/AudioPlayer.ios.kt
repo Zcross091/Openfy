@@ -8,18 +8,8 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AVFAudio.AVAudioSession
 import platform.AVFAudio.AVAudioSessionCategoryPlayback
 import platform.AVFAudio.AVAudioSessionModeDefault
-import platform.AVFoundation.AVPlayer
-import platform.AVFoundation.AVPlayerItem
-import platform.AVFoundation.AVPlayerItemDidPlayToEndTimeNotification
-import platform.AVFoundation.addPeriodicTimeObserverForInterval
-import platform.AVFoundation.currentTime
-import platform.AVFoundation.duration
-import platform.AVFoundation.pause
-import platform.AVFoundation.play
-import platform.AVFoundation.rate
-import platform.AVFoundation.removeTimeObserver
-import platform.AVFoundation.replaceCurrentItemWithPlayerItem
-import platform.AVFoundation.seekToTime
+import platform.AVFAudio.setActive
+import platform.AVFoundation.*
 import platform.CoreGraphics.CGSize
 import platform.CoreMedia.CMTime
 import platform.CoreMedia.CMTimeGetSeconds
@@ -44,7 +34,6 @@ import platform.MediaPlayer.MPNowPlayingInfoPropertyPlaybackRate
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusCommandFailed
 import platform.MediaPlayer.MPRemoteCommandHandlerStatusSuccess
 import platform.MediaPlayer.MPRemoteCommandCenter
-import platform.UIKit.UIApplication
 import platform.UIKit.UIImage
 import platform.darwin.DISPATCH_QUEUE_PRIORITY_DEFAULT
 import platform.darwin.dispatch_async
@@ -79,7 +68,6 @@ object IosAudioPlayer : NativeAudioPlayer {
         setupRemoteCommandCenter()
         setupNotificationObservers()
         PlaybackManager.setNativePlayer(this)
-        UIApplication.sharedApplication.beginReceivingRemoteControlEvents()
     }
 
     /**
@@ -95,7 +83,7 @@ object IosAudioPlayer : NativeAudioPlayer {
                 options = 0u,
                 error = null
             )
-            session.setActive(active = true, error = null)
+            session.setActive(true, null)
         } catch (e: Throwable) {
             println("[IosAudioPlayer] Audio session activation error: ${e.message}")
         }
