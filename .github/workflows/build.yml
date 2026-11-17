@@ -80,14 +80,19 @@ jobs:
           echo "Target tag: ${TAG}"
           echo "Ref: ${{ github.ref }}"
 
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "Publishing permanent versioned release for ${TAG}..."
+          echo "Managing versioned release ${TAG}..."
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Updating existing release ${TAG} notes and assets..."
+            gh release edit "${TAG}" --title "Openfy ${TAG} - Spotify UI with RVX Audio Engine" --notes-file .github/release_notes.md
+            gh release upload "${TAG}" release-artifacts/* --clobber
+          else
+            echo "Creating new versioned release ${TAG}..."
             gh release create "${TAG}" \
               release-artifacts/Openfy.apk \
               "release-artifacts/Openfy-${TAG}.apk" \
               release-artifacts/SHA256SUMS.txt \
               --title "Openfy ${TAG} - Spotify UI with RVX Audio Engine" \
-              --notes-file .github/release_notes.md || gh release upload "${TAG}" release-artifacts/* --clobber
+              --notes-file .github/release_notes.md
           fi
 
           echo "Updating rolling 'latest' release for direct download links..."
