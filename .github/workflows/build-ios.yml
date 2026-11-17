@@ -67,6 +67,13 @@ jobs:
             exit 1
           }
 
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-ios-build-log
+          path: xcf_build.log
+
       - name: Build iOS xcarchive
         run: |
           # Detect workspace or project
