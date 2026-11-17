@@ -1,19 +1,19 @@
-# Openfy 🎵 (Android)
+# Openfy 🎵
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Zcross091/Openfy/main/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" alt="Openfy Logo" width="128"/>
 </p>
 
 <p align="center">
-  <strong>A music streaming application for Android mobile phones, looking just like Spotify with the power of RVX YouTube Music under the hood.</strong>
+  <strong>A music streaming application for mobile phones, looking just like Spotify with the power of RVX YouTube Music under the hood.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/Zcross091/Openfy/actions/workflows/build.yml">
     <img src="https://github.com/Zcross091/Openfy/actions/workflows/build.yml/badge.svg" alt="Build Status"/>
   </a>
-  <a href="https://github.com/Zcross091/Openfy/releases/tag/latest">
-    <img src="https://img.shields.io/github/v/release/Zcross091/Openfy?label=Latest%20APK&color=1DB954&logo=android" alt="Latest Release"/>
+  <a href="https://github.com/Zcross091/Openfy/releases/tag/v1.1.0">
+    <img src="https://img.shields.io/github/v/release/Zcross091/Openfy?label=Release%20v1.1.0&color=1DB954&logo=android" alt="v1.1.0 Release"/>
   </a>
   <img src="https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026--35)-3DDC84?logo=android&logoColor=white" alt="Android"/>
   <img src="https://img.shields.io/badge/Language-Kotlin%202.0.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin"/>
@@ -25,19 +25,34 @@
   </a>
 </p>
 
+---
+
+## 📱 Visual Showcase & Live Preview
+
+<p align="center">
+  <img src="docs/screenshots/openfy_slideshow.gif" width="320" alt="Openfy Mobile App Slideshow"/>
+  <br>
+  <em>✨ Looping preview of Openfy running on real Android devices: 1:1 Spotify UI, RVX streaming engine, and synced lyrics ✨</em>
+</p>
+
+| 🏠 1. Home Feed | 🔍 2. Search & Browse | 📚 3. Your Library | 🎵 4. Now Playing (160k) | 🎤 5. Synced Lyrics |
+| :---: | :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/01_home_screen.jpg" width="180" alt="Home Screen"/> | <img src="docs/screenshots/02_search_browse.jpg" width="180" alt="Search Screen"/> | <img src="docs/screenshots/03_your_library.jpg" width="180" alt="Your Library"/> | <img src="docs/screenshots/04_now_playing.jpg" width="180" alt="Now Playing Screen"/> | <img src="docs/screenshots/05_synced_lyrics.jpg" width="180" alt="Live Synced Lyrics"/> |
+| *1:1 Spotify UI & top charts* | *Rich genre & category tiles* | *Playlists & Liked songs* | *Opus 160k stream & controls* | *Real-time karaoke highlighting* |
+
+---
+
+## 📥 Download & Install
+
 <p align="center">
   <a href="https://github.com/Zcross091/Openfy/releases/latest/download/Openfy.apk">
     <img src="https://img.shields.io/badge/Download-Openfy.apk%20(Direct)-1DB954?style=for-the-badge&logo=android&logoColor=white" alt="Download APK"/>
   </a>
 </p>
 
----
-
-## 📥 Download & Install
-
-You can download the latest automated build directly from GitHub Releases:
-* **Direct Download**: [**Download Openfy.apk**](https://github.com/Zcross091/Openfy/releases/latest/download/Openfy.apk)
-* **Latest Release Hub**: [GitHub Releases (Tag: `latest`)](https://github.com/Zcross091/Openfy/releases/tag/latest)
+* **Official Versioned Release**: [**GitHub Release v1.1.0**](https://github.com/Zcross091/Openfy/releases/tag/v1.1.0)
+* **Direct APK Download**: [**Download Openfy-v1.1.0.apk**](https://github.com/Zcross091/Openfy/releases/download/v1.1.0/Openfy-v1.1.0.apk) (or [**Latest Rolling Openfy.apk**](https://github.com/Zcross091/Openfy/releases/latest/download/Openfy.apk))
+* **Release Hub**: [All Openfy Releases](https://github.com/Zcross091/Openfy/releases)
 
 > **In-Place APK Updates Supported**: Every build is signed with a persistent cryptographic release certificate (`SHA-256: 74:E6:5E:24:...`). You can install new APK versions directly on top of previous versions without uninstalling or losing your cached data.
 
@@ -56,22 +71,6 @@ You can download the latest automated build directly from GitHub Releases:
   * **Guest / Free Mode**: Search, browse global top charts, and stream full songs without logging into anything.
 * **🎤 Synchronized Karaoke Lyrics**: Fullscreen real-time synced lyrics with line-by-line autoscroll and click-to-seek, powered by LRCLIB.
 
----
-
-## 📱 App Slideshow & Screenshots
-
-<p align="center">
-  <img src="docs/screenshots/openfy_slideshow.gif" width="340" alt="Openfy Mobile App Slideshow"/>
-  <br>
-  <em>✨ Looping slideshow preview of Openfy running on real Android devices ✨</em>
-</p>
-
-### 📸 Full Screen Showcase
-
-| 🏠 1. Home Feed | 🔍 2. Search & Browse | 📚 3. Your Library | 🎵 4. Now Playing (160k) | 🎤 5. Synced Lyrics |
-| :---: | :---: | :---: | :---: | :---: |
-| <img src="docs/screenshots/01_home_screen.jpg" width="180" alt="Home Screen"/> | <img src="docs/screenshots/02_search_browse.jpg" width="180" alt="Search Screen"/> | <img src="docs/screenshots/03_your_library.jpg" width="180" alt="Your Library"/> | <img src="docs/screenshots/04_now_playing.jpg" width="180" alt="Now Playing Screen"/> | <img src="docs/screenshots/05_synced_lyrics.jpg" width="180" alt="Live Synced Lyrics"/> |
-| *1:1 Spotify UI & top charts* | *Rich genre & category tiles* | *Playlists & Liked songs* | *Opus 160k stream & controls* | *Real-time karaoke highlighting* |
 
 ---
 

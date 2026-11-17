@@ -5,9 +5,8 @@ on:
     branches:
       - main
       - master
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -50,9 +49,22 @@ jobs:
         run: |
           mkdir -p release-artifacts
           cp app/build/outputs/apk/release/app-release.apk release-artifacts/Openfy.apk
-          cp app/build/outputs/apk/release/app-release.apk release-artifacts/Openfy-${{ github.sha }}.apk
-          echo "Release APK SHA256:"
-          sha256sum release-artifacts/Openfy.apk
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          else
+            RELEASE_TAG="v$(grep -m 1 'versionName =' app/build.gradle.kts | cut -d '"' -f2)"
+          fi
+
+          cp app/build/outputs/apk/release/app-release.apk "release-artifacts/Openfy-${RELEASE_TAG}.apk"
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_ENV
+
+          echo "Computing SHA256 hashes..."
+          cd release-artifacts
+          sha256sum Openfy.apk > SHA256SUMS.txt
+          sha256sum "Openfy-${RELEASE_TAG}.apk" >> SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          cd ..
 
       - name: Upload APK Build Artifact
         uses: actions/upload-artifact@v4
@@ -61,31 +73,72 @@ jobs:
           path: release-artifacts/Openfy.apk
           retention-days: 30
 
-      - name: Release Every Newest APK as Latest
+      - name: Publish Versioned and Rolling Releases
         run: |
-          echo "Configuring git tag for latest commit ${{ github.sha }}..."
+          TAG="${{ env.RELEASE_TAG }}"
+          APK_SHA=$(sha256sum release-artifacts/Openfy.apk | awk '{print $1}')
+
+          echo "Target tag: ${TAG}"
+          echo "Ref: ${{ github.ref }}"
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "Publishing permanent versioned release for ${TAG}..."
+
+            RELEASE_NOTES="### 🎵 Openfy Android ${TAG}
+
+**Openfy** is a pure native Android streaming client bringing Spotify's sleek interface together with RVX YouTube Music's high-fidelity, ad-free streaming engine.
+
+---
+
+### 🚀 What's New
+* **Spotify Library Sync**: Fast 1-click \`sp_dc\` cookie input to sync your Liked Songs and playlists.
+* **Playlist Management & Direct Heart**: Dedicated Add-to-Playlist sheet, '+ New Playlist' creation dialog, and instant Spotify API library write (\`PUT /v1/me/tracks\`).
+* **LRCLIB Real-time Lyrics**: Fullscreen synced karaoke lyrics with line-by-line autoscroll and tap-to-seek.
+* **Desktop Google Login Flow**: Seamless Google Sign-In WebView detection bypass.
+
+### 🛠️ Bug Fixes & Stability
+* **Playback Buffer & Wake Lock**: Fixed the 50-second background playback pause using \`WAKE_MODE_NETWORK\`, 3-minute ExoPlayer buffering, and persistent foreground service.
+* **Cipher Solving**: Integrated InnerTube STS cipher decryption for unthrottled streams.
+
+### 🔒 Verification & Hashes
+* **File**: \`Openfy-${TAG}.apk\` / \`Openfy.apk\`
+* **SHA-256**: \`${APK_SHA}\`
+* **Persistent Keystore Signature**: In-place updates supported across all releases without uninstalling!
+
+#### 📥 Download:
+Download **\`Openfy.apk\`** or **\`Openfy-${TAG}.apk\`** below to install directly on your Android device."
+
+            gh release create "${TAG}" \
+              release-artifacts/Openfy.apk \
+              "release-artifacts/Openfy-${TAG}.apk" \
+              release-artifacts/SHA256SUMS.txt \
+              --title "Openfy ${TAG} - Spotify UI with RVX Audio Engine" \
+              --notes "${RELEASE_NOTES}" || gh release upload "${TAG}" release-artifacts/* --clobber
+          fi
+
+          echo "Updating rolling 'latest' release for direct download links..."
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -f latest ${{ github.sha }}
           git push -f origin latest || true
 
-          echo "Removing previous release to eliminate stale APK assets..."
           gh release delete latest --yes || true
 
-          echo "Creating fresh rolling latest release..."
-          gh release create latest release-artifacts/Openfy.apk \
+          gh release create latest \
+            release-artifacts/Openfy.apk \
+            release-artifacts/SHA256SUMS.txt \
             --title "Openfy Latest Release (Auto-Build)" \
-            --notes "### 🎵 Openfy Android - Automated Build
+            --notes "### 🎵 Openfy Android - Latest Release (${TAG})
 
-          This release is automatically updated on every new commit to ensure you always have the freshest build.
+This rolling release points to the newest stable build.
 
-          * **Commit:** \`${{ github.sha }}\`
-          * **Message:** ${{ github.event.head_commit.message }}
-          * **Persistent Signature:** Signed with the official Openfy release key (v1, v2, v3, v4 schemes). You can update this APK directly over older versions without uninstalling!
-          * **Logo & Assets:** Full-resolution icon and adaptive launcher included.
+* **Version:** \`${TAG}\`
+* **Commit:** \`${{ github.sha }}\`
+* **SHA-256:** \`${APK_SHA}\`
+* **Persistent Signature:** Signed with the official Openfy release key. Direct updates over previous versions are supported without uninstalling!
 
-          #### 📥 Download:
-          Download **\`Openfy.apk\`** below and install it directly on your Android phone!" \
+#### 📥 Direct Download:
+Download **\`Openfy.apk\`** below." \
             --target ${{ github.sha }} \
             --latest
         env:
