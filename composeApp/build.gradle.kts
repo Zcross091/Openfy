@@ -31,16 +31,6 @@ kotlin {
         }
     }
 
-    targets.all {
-        compilations.all {
-            compileTaskProvider.configure {
-                compilerOptions {
-                    freeCompilerArgs.add("-opt-in=kotlinx.cinterop.ExperimentalForeignApi")
-                }
-            }
-        }
-    }
-
     sourceSets {
         commonMain.dependencies {
             implementation(compose.runtime)
@@ -68,7 +58,6 @@ kotlin {
             // Multiplatform Settings
             implementation(libs.multiplatform.settings)
             implementation(libs.multiplatform.settings.no.arg)
-            implementation(libs.multiplatform.settings.coroutines)
         }
 
         androidMain.dependencies {
