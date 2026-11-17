@@ -58,7 +58,14 @@ jobs:
         run: chmod +x gradlew
 
       - name: Assemble Shared XCFramework
-        run: ./gradlew :composeApp:assembleOpenfyKitReleaseXCFramework --stacktrace --info --no-daemon
+        run: |
+          set -o pipefail
+          ./gradlew :composeApp:assembleOpenfyKitReleaseXCFramework --stacktrace --no-daemon > xcf_build.log 2>&1 || {
+            echo "::error::Gradle assembleOpenfyKitReleaseXCFramework failed!"
+            echo "==================== BUILD FAILURE LOG ===================="
+            tail -n 120 xcf_build.log
+            exit 1
+          }
 
       - name: Build iOS xcarchive
         run: |
