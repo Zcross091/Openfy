@@ -77,43 +77,17 @@ jobs:
         run: |
           TAG="${{ env.RELEASE_TAG }}"
           APK_SHA=$(sha256sum release-artifacts/Openfy.apk | awk '{print $1}')
-
           echo "Target tag: ${TAG}"
           echo "Ref: ${{ github.ref }}"
 
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "Publishing permanent versioned release for ${TAG}..."
-
-            RELEASE_NOTES="### 🎵 Openfy Android ${TAG}
-
-**Openfy** is a pure native Android streaming client bringing Spotify's sleek interface together with RVX YouTube Music's high-fidelity, ad-free streaming engine.
-
----
-
-### 🚀 What's New
-* **Spotify Library Sync**: Fast 1-click \`sp_dc\` cookie input to sync your Liked Songs and playlists.
-* **Playlist Management & Direct Heart**: Dedicated Add-to-Playlist sheet, '+ New Playlist' creation dialog, and instant Spotify API library write (\`PUT /v1/me/tracks\`).
-* **LRCLIB Real-time Lyrics**: Fullscreen synced karaoke lyrics with line-by-line autoscroll and tap-to-seek.
-* **Desktop Google Login Flow**: Seamless Google Sign-In WebView detection bypass.
-
-### 🛠️ Bug Fixes & Stability
-* **Playback Buffer & Wake Lock**: Fixed the 50-second background playback pause using \`WAKE_MODE_NETWORK\`, 3-minute ExoPlayer buffering, and persistent foreground service.
-* **Cipher Solving**: Integrated InnerTube STS cipher decryption for unthrottled streams.
-
-### 🔒 Verification & Hashes
-* **File**: \`Openfy-${TAG}.apk\` / \`Openfy.apk\`
-* **SHA-256**: \`${APK_SHA}\`
-* **Persistent Keystore Signature**: In-place updates supported across all releases without uninstalling!
-
-#### 📥 Download:
-Download **\`Openfy.apk\`** or **\`Openfy-${TAG}.apk\`** below to install directly on your Android device."
-
             gh release create "${TAG}" \
               release-artifacts/Openfy.apk \
               "release-artifacts/Openfy-${TAG}.apk" \
               release-artifacts/SHA256SUMS.txt \
               --title "Openfy ${TAG} - Spotify UI with RVX Audio Engine" \
-              --notes "${RELEASE_NOTES}" || gh release upload "${TAG}" release-artifacts/* --clobber
+              --notes-file .github/release_notes.md || gh release upload "${TAG}" release-artifacts/* --clobber
           fi
 
           echo "Updating rolling 'latest' release for direct download links..."
@@ -124,21 +98,13 @@ Download **\`Openfy.apk\`** or **\`Openfy-${TAG}.apk\`** below to install direct
 
           gh release delete latest --yes || true
 
+          printf "### 🎵 Openfy Android - Latest Release (%s)\n\nThis rolling release points to the newest stable build.\n\n* **Version:** \`%s\`\n* **Commit:** \`%s\`\n* **SHA-256:** \`%s\`\n* **Persistent Signature:** Signed with the official Openfy release key. Direct updates over previous versions are supported without uninstalling!\n\n#### 📥 Direct Download:\nDownload **\`Openfy.apk\`** below.\n" "${TAG}" "${TAG}" "${{ github.sha }}" "${APK_SHA}" > release_notes_latest.txt
+
           gh release create latest \
             release-artifacts/Openfy.apk \
             release-artifacts/SHA256SUMS.txt \
             --title "Openfy Latest Release (Auto-Build)" \
-            --notes "### 🎵 Openfy Android - Latest Release (${TAG})
-
-This rolling release points to the newest stable build.
-
-* **Version:** \`${TAG}\`
-* **Commit:** \`${{ github.sha }}\`
-* **SHA-256:** \`${APK_SHA}\`
-* **Persistent Signature:** Signed with the official Openfy release key. Direct updates over previous versions are supported without uninstalling!
-
-#### 📥 Direct Download:
-Download **\`Openfy.apk\`** below." \
+            --notes-file release_notes_latest.txt \
             --target ${{ github.sha }} \
             --latest
         env:
