@@ -60,7 +60,7 @@ jobs:
       - name: Assemble Shared XCFramework
         run: |
           set -o pipefail
-          ./gradlew :composeApp:assembleOpenfyKitReleaseXCFramework --stacktrace --no-daemon > xcf_build.log 2>&1 || {
+          ./gradlew :composeApp:assembleOpenfyKitReleaseXCFramework -Dorg.gradle.jvmargs="-Xmx6144m -XX:+UseG1GC -Dfile.encoding=UTF-8" --stacktrace --no-daemon > xcf_build.log 2>&1 || {
             echo "::error::Gradle assembleOpenfyKitReleaseXCFramework failed!"
             grep -E "error:|e:|FAILURE:|BUILD FAILED|Caused by:" xcf_build.log | head -n 15 | while IFS= read -r line; do
               echo "::error title=Compiler Error::$line"
