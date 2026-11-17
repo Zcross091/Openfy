@@ -31,9 +31,17 @@ class MapSettings : Settings {
 
 enum class AudioQuality(val title: String, val description: String, val targetItag: Int, val fallbackItag: Int) {
     AUTO("Auto (Recommended)", "Best quality available (Opus ~160k on Android, AAC ~130k on iOS)", 251, 140),
-    HIGH("High Fidelity", "Opus audio stream (~160 kbps, itag 251)", 251, 140),
-    NORMAL("Normal", "AAC audio stream (~130 kbps, itag 140)", 140, 251),
-    DATA_SAVER("Data Saver", "Low bandwidth stream (~50-70 kbps, itag 250/249)", 250, 249)
+    HIGH("High (160k Opus)", "Highest fidelity Opus audio stream (~160 kbps, itag 251)", 251, 140),
+    NORMAL("Normal (128k AAC)", "Standard AAC audio stream (~128-130 kbps, itag 140)", 140, 251),
+    DATA_SAVER("Low (64k Data Saver)", "Low bandwidth audio stream (~50-70 kbps, itag 250/249)", 250, 249)
+}
+
+enum class StreamingClient(val title: String, val description: String, val clientKey: String) {
+    AUTO("Auto", "Automatically chooses the best client for playback", "AUTO"),
+    ANDROID("Android Music", "Standard InnerTube Android Music client", "ANDROID_MUSIC"),
+    IOS("iOS Music", "Native iOS InnerTube client (AAC itag 140)", "IOS_MUSIC"),
+    TV("TV HTML5 Simply", "Lightweight TV client bypass (Cobalt)", "TVHTML5_SIMPLY"),
+    WEB("Web Remix", "YouTube Music desktop web client", "WEB_REMIX")
 }
 
 object SettingsManager {
@@ -51,12 +59,32 @@ object SettingsManager {
     private val _audioQuality = MutableStateFlow(loadAudioQuality())
     val audioQuality = _audioQuality.asStateFlow()
 
-    private val _enableLocalMusic = MutableStateFlow(loadEnableLocalMusic())
+    private val _streamingClient = MutableStateFlow(loadStreamingClient())
+    val streamingClient = _streamingClient.asStateFlow()
+
+    private val _gaplessPlayback = MutableStateFlow(loadBoolean("gapless_playback", true))
+    val gaplessPlayback = _gaplessPlayback.asStateFlow()
+
+    private val _focusAudio = MutableStateFlow(loadBoolean("focus_audio", true))
+    val focusAudio = _focusAudio.asStateFlow()
+
+    private val _highResArt = MutableStateFlow(loadBoolean("high_res_art", true))
+    val highResArt = _highResArt.asStateFlow()
+
+    private val _showLyrics = MutableStateFlow(loadBoolean("show_lyrics", true))
+    val showLyrics = _showLyrics.asStateFlow()
+
+    private val _enableLocalMusic = MutableStateFlow(loadBoolean("enable_local_music", true))
     val enableLocalMusic = _enableLocalMusic.asStateFlow()
 
     private fun reload() {
         _audioQuality.value = loadAudioQuality()
-        _enableLocalMusic.value = loadEnableLocalMusic()
+        _streamingClient.value = loadStreamingClient()
+        _gaplessPlayback.value = loadBoolean("gapless_playback", true)
+        _focusAudio.value = loadBoolean("focus_audio", true)
+        _highResArt.value = loadBoolean("high_res_art", true)
+        _showLyrics.value = loadBoolean("show_lyrics", true)
+        _enableLocalMusic.value = loadBoolean("enable_local_music", true)
     }
 
     private fun loadAudioQuality(): AudioQuality {
@@ -68,11 +96,20 @@ object SettingsManager {
         }
     }
 
-    private fun loadEnableLocalMusic(): Boolean {
+    private fun loadStreamingClient(): StreamingClient {
         return try {
-            settings.getBoolean("enable_local_music", true)
+            val saved = settings.getString("streaming_client", StreamingClient.AUTO.name)
+            StreamingClient.valueOf(saved)
         } catch (e: Exception) {
-            true
+            StreamingClient.AUTO
+        }
+    }
+
+    private fun loadBoolean(key: String, defaultValue: Boolean): Boolean {
+        return try {
+            settings.getBoolean(key, defaultValue)
+        } catch (e: Exception) {
+            defaultValue
         }
     }
 
@@ -80,16 +117,54 @@ object SettingsManager {
         try {
             settings.putString("audio_quality", quality.name)
         } catch (e: Exception) {
-            // Ignore write errors
         }
         _audioQuality.value = quality
+    }
+
+    fun setStreamingClient(client: StreamingClient) {
+        try {
+            settings.putString("streaming_client", client.name)
+        } catch (e: Exception) {
+        }
+        _streamingClient.value = client
+    }
+
+    fun setGaplessPlayback(enable: Boolean) {
+        try {
+            settings.putBoolean("gapless_playback", enable)
+        } catch (e: Exception) {
+        }
+        _gaplessPlayback.value = enable
+    }
+
+    fun setFocusAudio(enable: Boolean) {
+        try {
+            settings.putBoolean("focus_audio", enable)
+        } catch (e: Exception) {
+        }
+        _focusAudio.value = enable
+    }
+
+    fun setHighResArt(enable: Boolean) {
+        try {
+            settings.putBoolean("high_res_art", enable)
+        } catch (e: Exception) {
+        }
+        _highResArt.value = enable
+    }
+
+    fun setShowLyrics(enable: Boolean) {
+        try {
+            settings.putBoolean("show_lyrics", enable)
+        } catch (e: Exception) {
+        }
+        _showLyrics.value = enable
     }
 
     fun setEnableLocalMusic(enable: Boolean) {
         try {
             settings.putBoolean("enable_local_music", enable)
         } catch (e: Exception) {
-            // Ignore write errors
         }
         _enableLocalMusic.value = enable
     }

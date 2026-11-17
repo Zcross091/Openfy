@@ -67,30 +67,29 @@ fun BottomMiniPlayer(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Artwork
-                if (!currentTrack?.coverUrl.isNullOrEmpty()) {
-                    AsyncImage(
-                        model = currentTrack?.coverUrl,
-                        contentDescription = currentTrack?.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF282828)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            tint = SpotifySubdued
-                        )
+                OpenfyAsyncImage(
+                    url = currentTrack?.coverUrl,
+                    contentDescription = currentTrack?.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                    placeholder = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF282828)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = SpotifySubdued
+                            )
+                        }
                     }
-                }
+                )
 
                 Spacer(modifier = Modifier.width(10.dp))
 

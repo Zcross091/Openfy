@@ -172,31 +172,30 @@ fun AddToPlaylistSheet(
                                 .padding(vertical = 8.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (!playlist.coverUrl.isNullOrEmpty()) {
-                                AsyncImage(
-                                    model = playlist.coverUrl,
-                                    contentDescription = playlist.title,
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(6.dp)),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFF282828)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MusicNote,
-                                        contentDescription = null,
-                                        tint = SpotifySubdued,
-                                        modifier = Modifier.size(24.dp)
-                                    )
+                            OpenfyAsyncImage(
+                                url = playlist.coverUrl,
+                                contentDescription = playlist.title,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(6.dp)),
+                                contentScale = ContentScale.Crop,
+                                placeholder = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFF282828)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = SpotifySubdued,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
                                 }
-                            }
+                            )
 
                             Spacer(modifier = Modifier.width(14.dp))
 

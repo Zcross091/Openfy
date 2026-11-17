@@ -44,6 +44,15 @@ fun AccountSwitcherDialog(
 
     var spotifyTokenInput by remember { mutableStateOf("") }
     var youtubeEmailInput by remember { mutableStateOf("") }
+    var showAuthWebViewForProvider by remember { mutableStateOf<AccountProvider?>(null) }
+
+    if (showAuthWebViewForProvider != null) {
+        AuthWebViewDialog(
+            provider = showAuthWebViewForProvider!!,
+            onDismiss = { showAuthWebViewForProvider = null },
+            onSuccess = { msg -> }
+        )
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -178,11 +187,30 @@ fun AccountSwitcherDialog(
                                     }
                                 } else {
                                     Text(
-                                        text = "Connect with your Spotify sp_dc cookie or session token to sync playlists and Liked Songs:",
+                                        text = "Connect your personal Spotify account to sync your Liked Songs and playlists:",
                                         color = SpotifySubdued,
                                         fontSize = 11.sp
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Primary: 1-Click Web Login
+                                    Button(
+                                        onClick = { showAuthWebViewForProvider = AccountProvider.SPOTIFY },
+                                        colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Log in with Spotify (Web)", color = Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Text(
+                                        text = "Or manually paste sp_dc cookie or token:",
+                                        color = SpotifySubdued,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
 
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         OutlinedTextField(
@@ -275,11 +303,30 @@ fun AccountSwitcherDialog(
                                     }
                                 } else {
                                     Text(
-                                        text = "Link your Google account or YouTube Music cookies to sync your library:",
+                                        text = "Log in with your Google account to sync your YouTube Music library:",
                                         color = SpotifySubdued,
                                         fontSize = 11.sp
                                     )
                                     Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Primary: 1-Click Google Sign-In
+                                    Button(
+                                        onClick = { showAuthWebViewForProvider = AccountProvider.YOUTUBE },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242424)),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Sign in with Google Account (Web)", color = White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    Text(
+                                        text = "Or link your Google account email / cookies manually:",
+                                        color = SpotifySubdued,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
 
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         OutlinedTextField(

@@ -141,18 +141,22 @@ object PlaybackManager : AudioPlayerController {
         syncState()
 
         scope.launch(Dispatchers.IO) {
-            val streamUrl = if (track.id.startsWith("LOCAL:")) {
-                track.id.removePrefix("LOCAL:")
-            } else {
-                YouTubeAudioResolver.resolveStreamUrl(track)
-            }
+            try {
+                val streamUrl = if (track.id.startsWith("LOCAL:")) {
+                    track.id.removePrefix("LOCAL:")
+                } else {
+                    YouTubeAudioResolver.resolveStreamUrl(track)
+                }
 
-            if (streamUrl != null) {
-                nativePlayer?.playStream(streamUrl, track)
-                _isLoading.value = false
-                _isPlaying.value = true
-                startProgressTicker()
-            } else {
+                if (streamUrl != null) {
+                    nativePlayer?.playStream(streamUrl, track)
+                    _isLoading.value = false
+                    _isPlaying.value = true
+                    startProgressTicker()
+                } else {
+                    _isLoading.value = false
+                }
+            } catch (e: Exception) {
                 _isLoading.value = false
             }
             syncState()

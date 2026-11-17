@@ -10,6 +10,8 @@ import com.openfy.music.OpenfyApplication
 import com.openfy.music.data.model.Track
 import com.openfy.music.data.remote.YouTubeAudioResolver
 import com.openfy.music.service.MusicService
+import com.openfy.music.util.ArtworkUtils
+import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,6 +71,16 @@ object PlaybackManager {
                     handleTrackEnded()
                 }
             }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                _isLoading.value = false
+                _isPlaying.value = false
+                stopProgressTicker()
+                _currentTrack.value?.let { track ->
+                    val key = track.youtubeId ?: track.id
+                    YouTubeAudioResolver.invalidateCache(key)
+                }
+            }
         })
     }
 
@@ -92,29 +104,41 @@ object PlaybackManager {
         }
 
         scope.launch {
-            val streamUrl = if (track.id.startsWith("LOCAL:")) {
-                track.id.removePrefix("LOCAL:")
-            } else {
-                YouTubeAudioResolver.resolveStreamUrl(track)
-            }
-            if (streamUrl != null && exoPlayer != null) {
-                val metadata = MediaMetadata.Builder()
-                    .setTitle(track.title)
-                    .setArtist(track.artistNames)
-                    .setAlbumTitle(track.album?.name ?: "Openfy")
-                    .build()
-
-                val mediaItem = MediaItem.Builder()
-                    .setUri(streamUrl)
-                    .setMediaMetadata(metadata)
-                    .build()
-
-                exoPlayer?.run {
-                    setMediaItem(mediaItem)
-                    prepare()
-                    play()
+            try {
+                val streamUrl = if (track.id.startsWith("LOCAL:")) {
+                    track.id.removePrefix("LOCAL:")
+                } else {
+                    YouTubeAudioResolver.resolveStreamUrl(track)
                 }
-            } else {
+                if (streamUrl != null && exoPlayer != null) {
+                    val highResCover = ArtworkUtils.getHighResArtworkUrl(track.coverUrl)
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(track.title)
+                        .setArtist(track.artistNames)
+                        .setAlbumTitle(track.album?.name ?: "Openfy")
+                        .apply {
+                            if (highResCover != null) {
+                                try {
+                                    setArtworkUri(Uri.parse(highResCover))
+                                } catch (_: Exception) {}
+                            }
+                        }
+                        .build()
+
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(streamUrl)
+                        .setMediaMetadata(metadata)
+                        .build()
+
+                    exoPlayer?.run {
+                        setMediaItem(mediaItem)
+                        prepare()
+                        play()
+                    }
+                } else {
+                    _isLoading.value = false
+                }
+            } catch (e: Exception) {
                 _isLoading.value = false
             }
         }

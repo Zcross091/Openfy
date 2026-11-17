@@ -19,6 +19,7 @@ import com.openfy.music.ui.components.SyncedLyricsDialog
 import com.openfy.music.ui.screens.HomeScreen
 import com.openfy.music.ui.screens.LikedSongsScreen
 import com.openfy.music.ui.screens.SearchScreen
+import com.openfy.music.ui.screens.SettingsScreen
 import com.openfy.music.ui.theme.Black
 import com.openfy.music.ui.theme.OpenfyTheme
 
@@ -29,6 +30,7 @@ fun OpenfyApp() {
         var isNowPlayingExpanded by remember { mutableStateOf(false) }
         var isLyricsOpen by remember { mutableStateOf(false) }
         var isAccountSwitcherOpen by remember { mutableStateOf(false) }
+        var isSettingsOpen by remember { mutableStateOf(false) }
 
         val snackbarHostState = remember { SnackbarHostState() }
 
@@ -72,19 +74,23 @@ fun OpenfyApp() {
                 when (currentTab) {
                     NavigationTab.HOME -> {
                         HomeScreen(
-                            onNavigateToLiked = { currentTab = NavigationTab.LIBRARY }
+                            onNavigateToLiked = { currentTab = NavigationTab.LIBRARY },
+                            onOpenSettings = { isSettingsOpen = true }
                         )
                     }
                     NavigationTab.SEARCH -> {
                         SearchScreen()
                     }
                     NavigationTab.LIBRARY -> {
-                        LikedSongsScreen()
+                        LikedSongsScreen(
+                            onOpenSettings = { isSettingsOpen = true }
+                        )
                     }
                     NavigationTab.ACCOUNT -> {
                         // Fallback view if opened directly
                         HomeScreen(
-                            onNavigateToLiked = { currentTab = NavigationTab.LIBRARY }
+                            onNavigateToLiked = { currentTab = NavigationTab.LIBRARY },
+                            onOpenSettings = { isSettingsOpen = true }
                         )
                     }
                 }
@@ -112,6 +118,13 @@ fun OpenfyApp() {
             if (isAccountSwitcherOpen) {
                 AccountSwitcherDialog(
                     onDismiss = { isAccountSwitcherOpen = false }
+                )
+            }
+
+            // Fullscreen Settings Modal
+            if (isSettingsOpen) {
+                SettingsScreen(
+                    onDismiss = { isSettingsOpen = false }
                 )
             }
         }

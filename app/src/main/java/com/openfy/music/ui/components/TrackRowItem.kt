@@ -55,29 +55,28 @@ fun TrackRowItem(
         )
 
         // Thumbnail
-        if (!track.coverUrl.isNullOrEmpty()) {
-            AsyncImage(
-                model = track.coverUrl,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(4.dp))
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(4.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = SpotifySubdued
-                )
+        OpenfyAsyncImage(
+            url = track.coverUrl,
+            contentDescription = track.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(4.dp)),
+            placeholder = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(4.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = SpotifySubdued
+                    )
+                }
             }
-        }
+        )
 
         Spacer(modifier = Modifier.width(12.dp))
 

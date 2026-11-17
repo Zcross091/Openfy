@@ -1,4 +1,39 @@
 {
+  "ANDROID_MUSIC": {
+    "clientName": "ANDROID_MUSIC",
+    "clientVersion": "7.27.52",
+    "clientId": "21",
+    "userAgent": "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 14; en_US) gzip",
+    "osName": "Android",
+    "osVersion": "14",
+    "androidSdkVersion": 34,
+    "friendlyName": "Android YouTube Music"
+  },
+  "IOS": {
+    "clientName": "IOS",
+    "clientVersion": "20.10.1",
+    "clientId": "5",
+    "userAgent": "com.google.ios.youtube/20.10.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)",
+    "deviceMake": "Apple",
+    "deviceModel": "iPhone16,2",
+    "osName": "iOS",
+    "osVersion": "17.5.1.21F90",
+    "friendlyName": "iOS Main"
+  },
+  "WEB_REMIX": {
+    "clientName": "WEB_REMIX",
+    "clientVersion": "1.20241110.01.00",
+    "clientId": "67",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "friendlyName": "YouTube Music Web"
+  },
+  "TVHTML5": {
+    "clientName": "TVHTML5",
+    "clientVersion": "7.20230405.08.01",
+    "clientId": "85",
+    "userAgent": "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/23.lts.3.306811-gold (unlike Gecko) v8/8.8.278.8-jit gles Starfish/2.0.3 (firmware; model)",
+    "friendlyName": "YouTube TV Cobalt"
+  },
   "VISIONOS": {
     "clientName": "VISIONOS",
     "clientVersion": "0.1",
@@ -17,13 +52,6 @@
     "userAgent": "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)",
     "friendlyName": "TVHTML5 Simply",
     "useSignatureTimestamp": true
-  },
-  "WEB_REMIX": {
-    "clientName": "WEB_REMIX",
-    "clientVersion": "1.20241110.01.00",
-    "clientId": "67",
-    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    "friendlyName": "YouTube Music Web"
   },
   "IOS_MUSIC": {
     "clientName": "IOS_MUSIC",

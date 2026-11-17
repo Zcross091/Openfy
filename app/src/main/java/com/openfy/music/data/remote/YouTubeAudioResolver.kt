@@ -11,6 +11,7 @@ import com.openfy.music.data.model.Album
 import com.openfy.music.data.model.Artist
 import com.openfy.music.data.model.Playlist
 import com.openfy.music.data.model.Track
+import com.openfy.music.util.ArtworkUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -128,7 +129,7 @@ object YouTubeAudioResolver {
                         val id = obj.get("id")?.asString ?: continue
                         val title = obj.get("title")?.asString ?: "Unknown"
                         val artist = obj.get("artist")?.asString ?: "Unknown Artist"
-                        val cover = obj.get("coverUrl")?.asString
+                        val cover = ArtworkUtils.getHighResArtworkUrl(obj.get("coverUrl")?.asString)
                         val duration = obj.get("durationSeconds")?.asInt ?: 0
 
                         tracks.add(
@@ -202,45 +203,74 @@ object YouTubeAudioResolver {
         tracks
     }
 
+    fun invalidateCache(trackId: String) {
+        streamCache.remove(trackId)
+    }
+
+    fun isStreamUrlValid(url: String): Boolean {
+        val expireMatch = java.util.regex.Pattern.compile("[&?]expire=(\\d+)").matcher(url)
+        if (expireMatch.find()) {
+            val expireEpochSec = expireMatch.group(1)?.toLongOrNull() ?: return true
+            val currentEpochSec = System.currentTimeMillis() / 1000L
+            return currentEpochSec < (expireEpochSec - 60)
+        }
+        return true
+    }
+
     /**
-     * Resolves the full-length audio stream for a track using an unthrottled 3-tier fallback chain:
-     * Tier 1: WEB_REMIX (Official Web Player) with dynamic SignatureTimestamp (STS) - Solves CDN 50s throttle
-     * Tier 2: VISIONOS (Apple Vision Pro) - Direct unciphered GoogleVideo URLs
-     * Tier 3: TVHTML5_SIMPLY (Cobalt Client 75) - Standalone fallback
+     * Resolves the full-length audio stream for a track using a robust 5-tier fallback chain:
+     * Tier 1: ANDROID_MUSIC (Client 21) - Authenticated YouTube Music library integration
+     * Tier 2: IOS (Client 5, v20.10.1) - Primary unthrottled unciphered direct stream extractor
+     * Tier 3: WEB_REMIX (Client 67) - Official Web Player with dynamic SignatureTimestamp (STS)
+     * Tier 4: TVHTML5 (Client 85) - Cobalt Smart TV client
+     * Tier 5: Piped Fallback - Distributed privacy-respecting YouTube API stream endpoints
      */
     suspend fun resolveStreamUrl(track: Track): String? = withContext(Dispatchers.IO) {
         val cacheKey = track.youtubeId ?: track.id
-        streamCache[cacheKey]?.let { return@withContext it }
+        streamCache[cacheKey]?.let { cachedUrl ->
+            if (isStreamUrlValid(cachedUrl)) {
+                return@withContext cachedUrl
+            } else {
+                streamCache.remove(cacheKey)
+            }
+        }
 
-        var videoId = track.youtubeId
-        if (videoId == null || videoId.length != 11) {
+        var videoId = if (track.youtubeId?.length == 11) {
+            track.youtubeId
+        } else if (track.id.length == 11 && !track.id.startsWith("LOCAL:") && !track.id.startsWith("spotify:")) {
+            track.id
+        } else {
             // Search for YouTube videoId using Title + Artist
             val searchResults = searchTracks("${track.title} ${track.artistNames}", limit = 3)
-            videoId = searchResults.firstOrNull()?.youtubeId ?: searchResults.firstOrNull()?.id
+            searchResults.firstOrNull()?.youtubeId ?: searchResults.firstOrNull()?.id
         }
 
         if (videoId == null) return@withContext null
 
-        val visitorData = getOrFetchVisitorData()
         val quality = SettingsManager.audioQuality.value
 
-        // Tier 1: Primary Resolver -> WEB_REMIX with dynamic SignatureTimestamp (STS)
-        var streamUrl = fetchWebRemixStreamUrl(videoId, visitorData, quality)
+        // Tier 1: ANDROID_MUSIC (Client 21)
+        var streamUrl = fetchAndroidMusicStreamUrl(videoId, quality)
 
-        // Tier 2: Fallback to VISIONOS (Client 101)
+        // Tier 2: IOS (Client 5, v20.10.1) - Primary reliable unciphered direct extractor
         if (streamUrl == null) {
-            streamUrl = fetchVisionOsStreamUrl(videoId, visitorData, quality)
+            streamUrl = fetchIosStreamUrl(videoId, quality)
         }
 
-        // Tier 2.5: Self-heal retry with fresh visitorData if needed
+        // Tier 3: WEB_REMIX (Client 67)
         if (streamUrl == null) {
-            val freshVisitorData = getOrFetchVisitorData(forceRefresh = true)
-            streamUrl = fetchVisionOsStreamUrl(videoId, freshVisitorData, quality)
+            val visitorData = getOrFetchVisitorData()
+            streamUrl = fetchWebRemixStreamUrl(videoId, visitorData, quality)
         }
 
-        // Tier 3: Fallback to TVHTML5_SIMPLY (Client 75)
+        // Tier 4: TVHTML5 (Client 85)
         if (streamUrl == null) {
-            streamUrl = fetchTvHtml5SimplyStreamUrl(videoId, visitorData, quality)
+            streamUrl = fetchTvHtml5StreamUrl(videoId, quality)
+        }
+
+        // Tier 5: Piped fallback
+        if (streamUrl == null) {
+            streamUrl = fetchPipedStreamUrl(videoId, quality)
         }
 
         if (streamUrl != null) {
@@ -251,18 +281,17 @@ object YouTubeAudioResolver {
         null
     }
 
-    private suspend fun fetchVisionOsStreamUrl(
+    private suspend fun fetchAndroidMusicStreamUrl(
         videoId: String,
-        visitorData: String?,
         quality: AudioQuality
     ): String? = withContext(Dispatchers.IO) {
         try {
-            val cfg = getClientConfig("VISIONOS")
-            val clientName = cfg?.get("clientName")?.asString ?: "VISIONOS"
-            val clientVersion = cfg?.get("clientVersion")?.asString ?: "0.1"
-            val clientId = cfg?.get("clientId")?.asString ?: "101"
+            val cfg = getClientConfig("ANDROID_MUSIC")
+            val clientName = cfg?.get("clientName")?.asString ?: "ANDROID_MUSIC"
+            val clientVersion = cfg?.get("clientVersion")?.asString ?: "7.27.52"
+            val clientId = cfg?.get("clientId")?.asString ?: "21"
             val userAgent = cfg?.get("userAgent")?.asString
-                ?: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+                ?: "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 14; en_US) gzip"
 
             val playerUrl = "https://music.youtube.com/youtubei/v1/player?prettyPrint=false"
             val payload = JsonObject().apply {
@@ -271,16 +300,11 @@ object YouTubeAudioResolver {
                         addProperty("clientName", clientName)
                         addProperty("clientVersion", clientVersion)
                         addProperty("clientId", clientId)
-                        addProperty("osName", "visionOS")
-                        addProperty("osVersion", "1.3.21O771")
-                        addProperty("deviceMake", "Apple")
-                        addProperty("deviceModel", "RealityDevice14,1")
-                        addProperty("userAgent", userAgent)
+                        addProperty("osName", "Android")
+                        addProperty("osVersion", "14")
+                        addProperty("androidSdkVersion", 34)
                         addProperty("hl", "en")
                         addProperty("gl", "US")
-                        if (!visitorData.isNullOrEmpty()) {
-                            addProperty("visitorData", visitorData)
-                        }
                     }
                     add("client", clientObj)
                 }
@@ -295,13 +319,6 @@ object YouTubeAudioResolver {
                 .header("User-Agent", userAgent)
                 .header("X-YouTube-Client-Name", clientId)
                 .header("X-YouTube-Client-Version", clientVersion)
-                .header("x-origin", "https://music.youtube.com")
-                .header("referer", "https://music.youtube.com/")
-                .header("x-goog-api-format-version", "1")
-
-            if (!visitorData.isNullOrEmpty()) {
-                reqBuilder.header("x-goog-visitor-id", visitorData)
-            }
 
             val cookie = AccountManager.youtubeCookie
             if (!cookie.isNullOrEmpty()) {
@@ -316,9 +333,7 @@ object YouTubeAudioResolver {
             if (response.isSuccessful) {
                 val body = response.body?.string() ?: ""
                 val json = gson.fromJson(body, JsonObject::class.java)
-                val playabilityStatus = json.getAsJsonObject("playabilityStatus")
-                val status = playabilityStatus?.get("status")?.asString
-
+                val status = json.getAsJsonObject("playabilityStatus")?.get("status")?.asString
                 if (status == "OK") {
                     val streamingData = json.getAsJsonObject("streamingData")
                     if (streamingData != null && streamingData.has("adaptiveFormats")) {
@@ -333,18 +348,17 @@ object YouTubeAudioResolver {
         null
     }
 
-    private suspend fun fetchTvHtml5SimplyStreamUrl(
+    private suspend fun fetchIosStreamUrl(
         videoId: String,
-        visitorData: String?,
         quality: AudioQuality
     ): String? = withContext(Dispatchers.IO) {
         try {
-            val cfg = getClientConfig("TVHTML5_SIMPLY")
-            val clientName = cfg?.get("clientName")?.asString ?: "TVHTML5_SIMPLY"
-            val clientVersion = cfg?.get("clientVersion")?.asString ?: "1.0"
-            val clientId = cfg?.get("clientId")?.asString ?: "75"
+            val cfg = getClientConfig("IOS")
+            val clientName = cfg?.get("clientName")?.asString ?: "IOS"
+            val clientVersion = cfg?.get("clientVersion")?.asString ?: "20.10.1"
+            val clientId = cfg?.get("clientId")?.asString ?: "5"
             val userAgent = cfg?.get("userAgent")?.asString
-                ?: "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.lts.30.1034943-gold (unlike Gecko), Unknown_TV_Unknown_0/Unknown (Unknown, Unknown)"
+                ?: "com.google.ios.youtube/20.10.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)"
 
             val playerUrl = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
             val payload = JsonObject().apply {
@@ -352,12 +366,13 @@ object YouTubeAudioResolver {
                     val clientObj = JsonObject().apply {
                         addProperty("clientName", clientName)
                         addProperty("clientVersion", clientVersion)
-                        addProperty("clientId", clientId)
+                        addProperty("deviceMake", "Apple")
+                        addProperty("deviceModel", "iPhone16,2")
+                        addProperty("userAgent", userAgent)
+                        addProperty("osName", "iOS")
+                        addProperty("osVersion", "17.5.1.21F90")
                         addProperty("hl", "en")
                         addProperty("gl", "US")
-                        if (!visitorData.isNullOrEmpty()) {
-                            addProperty("visitorData", visitorData)
-                        }
                     }
                     add("client", clientObj)
                 }
@@ -368,6 +383,7 @@ object YouTubeAudioResolver {
             val req = Request.Builder()
                 .url(playerUrl)
                 .post(payload.toString().toRequestBody(jsonMediaType))
+                .header("Content-Type", "application/json")
                 .header("User-Agent", userAgent)
                 .header("X-YouTube-Client-Name", clientId)
                 .header("X-YouTube-Client-Version", clientVersion)
@@ -377,14 +393,134 @@ object YouTubeAudioResolver {
             if (response.isSuccessful) {
                 val body = response.body?.string() ?: ""
                 val json = gson.fromJson(body, JsonObject::class.java)
-                val streamingData = json.getAsJsonObject("streamingData")
-                if (streamingData != null && streamingData.has("adaptiveFormats")) {
-                    val formats = streamingData.getAsJsonArray("adaptiveFormats")
-                    return@withContext extractBestAudioFormat(formats, quality)
+                val status = json.getAsJsonObject("playabilityStatus")?.get("status")?.asString
+                if (status == "OK") {
+                    val streamingData = json.getAsJsonObject("streamingData")
+                    if (streamingData != null && streamingData.has("adaptiveFormats")) {
+                        val formats = streamingData.getAsJsonArray("adaptiveFormats")
+                        return@withContext extractBestAudioFormat(formats, quality)
+                    }
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+        null
+    }
+
+    private suspend fun fetchTvHtml5StreamUrl(
+        videoId: String,
+        quality: AudioQuality
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val cfg = getClientConfig("TVHTML5")
+            val clientName = cfg?.get("clientName")?.asString ?: "TVHTML5"
+            val clientVersion = cfg?.get("clientVersion")?.asString ?: "7.20230405.08.01"
+            val clientId = cfg?.get("clientId")?.asString ?: "85"
+            val userAgent = cfg?.get("userAgent")?.asString
+                ?: "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/23.lts.3.306811-gold (unlike Gecko) v8/8.8.278.8-jit gles Starfish/2.0.3 (firmware; model)"
+
+            val playerUrl = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
+            val payload = JsonObject().apply {
+                val context = JsonObject().apply {
+                    val clientObj = JsonObject().apply {
+                        addProperty("clientName", clientName)
+                        addProperty("clientVersion", clientVersion)
+                        addProperty("clientId", clientId)
+                        addProperty("hl", "en")
+                        addProperty("gl", "US")
+                    }
+                    add("client", clientObj)
+                }
+                add("context", context)
+                addProperty("videoId", videoId)
+            }
+
+            val req = Request.Builder()
+                .url(playerUrl)
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", userAgent)
+                .header("X-YouTube-Client-Name", clientId)
+                .header("X-YouTube-Client-Version", clientVersion)
+                .build()
+
+            val response = client.newCall(req).execute()
+            if (response.isSuccessful) {
+                val body = response.body?.string() ?: ""
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val status = json.getAsJsonObject("playabilityStatus")?.get("status")?.asString
+                if (status == "OK") {
+                    val streamingData = json.getAsJsonObject("streamingData")
+                    if (streamingData != null && streamingData.has("adaptiveFormats")) {
+                        val formats = streamingData.getAsJsonArray("adaptiveFormats")
+                        return@withContext extractBestAudioFormat(formats, quality)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        null
+    }
+
+    private suspend fun fetchPipedStreamUrl(
+        videoId: String,
+        quality: AudioQuality
+    ): String? = withContext(Dispatchers.IO) {
+        val pipedInstances = listOf(
+            "https://pipedapi.kavin.rocks",
+            "https://api.piped.private.coffee",
+            "https://pipedapi.adminforge.de",
+            "https://pipedapi.drgns.space",
+            "https://pipedapi.reallyaweso.me"
+        )
+
+        for (base in pipedInstances) {
+            try {
+                val req = Request.Builder()
+                    .url("$base/streams/$videoId")
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .build()
+
+                val fastClient = client.newBuilder()
+                    .connectTimeout(4, TimeUnit.SECONDS)
+                    .readTimeout(4, TimeUnit.SECONDS)
+                    .build()
+
+                val resp = fastClient.newCall(req).execute()
+                if (resp.isSuccessful) {
+                    val body = resp.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val audioStreams = json.getAsJsonArray("audioStreams")
+                    if (audioStreams != null && audioStreams.size() > 0) {
+                        var bestUrl: String? = null
+                        var highestBitrate = 0L
+
+                        for (element in audioStreams) {
+                            val streamObj = element.asJsonObject
+                            val streamUrl = streamObj.get("url")?.asString ?: continue
+                            val itag = streamObj.get("itag")?.asInt ?: 0
+                            val bitrate = streamObj.get("bitrate")?.asLong ?: 0L
+
+                            if (itag == quality.targetItag) {
+                                return@withContext streamUrl
+                            } else if (itag == quality.fallbackItag && bestUrl == null) {
+                                bestUrl = streamUrl
+                            } else if (bitrate > highestBitrate) {
+                                highestBitrate = bitrate
+                                bestUrl = streamUrl
+                            }
+                        }
+
+                        if (bestUrl != null) {
+                            return@withContext bestUrl
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Try next Piped mirror
+            }
         }
         null
     }
@@ -660,9 +796,6 @@ object YouTubeAudioResolver {
 
     private fun parseSearchTracks(json: JsonObject, list: MutableList<Track>, limit: Int) {
         try {
-            val jsonStr = json.toString()
-            if (!jsonStr.contains("musicResponsiveListItemRenderer")) return
-
             val contents = json.getAsJsonObject("contents")
                 ?.getAsJsonObject("tabbedSearchResultsRenderer")
                 ?.getAsJsonArray("tabs")
@@ -674,7 +807,48 @@ object YouTubeAudioResolver {
 
             if (contents != null) {
                 for (section in contents) {
-                    val itemSection = section.asJsonObject.getAsJsonObject("musicShelfRenderer") ?: continue
+                    val sectionObj = section.asJsonObject
+
+                    // Parse Top Result Card (e.g. 'The Box') if present
+                    val cardShelf = sectionObj.getAsJsonObject("musicCardShelfRenderer")
+                    if (cardShelf != null) {
+                        val title = cardShelf.getAsJsonObject("title")?.getAsJsonArray("runs")?.get(0)?.asJsonObject?.get("text")?.asString ?: "Unknown Track"
+                        val subtitleRuns = cardShelf.getAsJsonObject("subtitle")?.getAsJsonArray("runs")
+                        val artistName = if (subtitleRuns != null && subtitleRuns.size() > 0) {
+                            subtitleRuns.get(0).asJsonObject.get("text")?.asString ?: "Unknown Artist"
+                        } else {
+                            "Unknown Artist"
+                        }
+                        val cardVideoId = cardShelf.getAsJsonObject("onTap")?.getAsJsonObject("watchEndpoint")?.get("videoId")?.asString
+                            ?: if (cardShelf.has("buttons") && cardShelf.getAsJsonArray("buttons").size() > 0) {
+                                cardShelf.getAsJsonArray("buttons").get(0).asJsonObject
+                                    .getAsJsonObject("buttonRenderer")
+                                    ?.getAsJsonObject("command")
+                                    ?.getAsJsonObject("watchEndpoint")
+                                    ?.get("videoId")?.asString
+                            } else null
+
+                        if (cardVideoId != null && list.none { it.id == cardVideoId }) {
+                            val thumbnails = cardShelf.getAsJsonObject("thumbnail")?.getAsJsonObject("musicThumbnailRenderer")?.getAsJsonObject("thumbnail")?.getAsJsonArray("thumbnails")
+                            val rawCoverUrl = thumbnails?.lastOrNull()?.asJsonObject?.get("url")?.asString
+                            val coverUrl = ArtworkUtils.getHighResArtworkUrl(rawCoverUrl)
+
+                            list.add(
+                                Track(
+                                    id = cardVideoId,
+                                    title = title,
+                                    artists = listOf(Artist(name = artistName)),
+                                    durationSeconds = 210,
+                                    coverUrl = coverUrl,
+                                    source = "youtube",
+                                    youtubeId = cardVideoId
+                                )
+                            )
+                        }
+                    }
+
+                    // Parse Standard Song Shelf Items
+                    val itemSection = sectionObj.getAsJsonObject("musicShelfRenderer") ?: continue
                     val items = itemSection.getAsJsonArray("contents") ?: continue
                     for (item in items) {
                         val mfr = item.asJsonObject.getAsJsonObject("musicResponsiveListItemRenderer") ?: continue
@@ -702,12 +876,13 @@ object YouTubeAudioResolver {
                                 ?.getAsJsonObject("watchEndpoint")
                                 ?.get("videoId")?.asString
 
-                        if (videoId != null) {
+                        if (videoId != null && list.none { it.id == videoId }) {
                             val thumbnails = mfr.getAsJsonObject("thumbnail")
                                 ?.getAsJsonObject("musicThumbnailRenderer")
                                 ?.getAsJsonObject("thumbnail")
                                 ?.getAsJsonArray("thumbnails")
-                            val coverUrl = thumbnails?.lastOrNull()?.asJsonObject?.get("url")?.asString
+                            val rawCoverUrl = thumbnails?.lastOrNull()?.asJsonObject?.get("url")?.asString
+                            val coverUrl = ArtworkUtils.getHighResArtworkUrl(rawCoverUrl)
 
                             list.add(
                                 Track(
@@ -722,6 +897,28 @@ object YouTubeAudioResolver {
                             )
                             if (list.size >= limit) return
                         }
+                    }
+                }
+            }
+
+            // Regex Fallback if structured parsing yields no items
+            if (list.isEmpty()) {
+                val vidPattern = java.util.regex.Pattern.compile("\"videoId\":\"([a-zA-Z0-9_-]{11})\"")
+                val matcher = vidPattern.matcher(json.toString())
+                val seen = mutableSetOf<String>()
+                while (matcher.find() && list.size < limit) {
+                    val vid = matcher.group(1) ?: continue
+                    if (seen.add(vid)) {
+                        list.add(
+                            Track(
+                                id = vid,
+                                title = "Track",
+                                artists = listOf(Artist(name = "YouTube Music")),
+                                durationSeconds = 210,
+                                source = "youtube",
+                                youtubeId = vid
+                            )
+                        )
                     }
                 }
             }

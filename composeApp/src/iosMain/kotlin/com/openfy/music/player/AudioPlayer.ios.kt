@@ -3,6 +3,7 @@
 package com.openfy.music.player
 
 import com.openfy.music.data.model.Track
+import com.openfy.music.util.ArtworkUtils
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AVFAudio.AVAudioSession
@@ -202,7 +203,7 @@ object IosAudioPlayer : NativeAudioPlayer {
         info[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(double = if (isPlaying) 1.0 else 0.0)
 
         // Asynchronously load artwork if URL is available
-        val coverUrl = track.coverUrl
+        val coverUrl = ArtworkUtils.getHighResArtworkUrl(track.coverUrl)
         if (!coverUrl.isNullOrEmpty()) {
             loadArtworkAsync(coverUrl) { image ->
                 if (image != null) {
@@ -294,6 +295,18 @@ object IosAudioPlayer : NativeAudioPlayer {
                 queue = NSOperationQueue.mainQueue
             ) { _ ->
                 PlaybackManager.onTrackEnded()
+            }
+
+            NSNotificationCenter.defaultCenter.addObserverForName(
+                name = AVPlayerItemFailedToPlayToEndTimeNotification,
+                `object` = null,
+                queue = NSOperationQueue.mainQueue
+            ) { _ ->
+                PlaybackManager.updatePlaybackState(isPlaying = false, isLoading = false)
+                currentTrack?.let { track ->
+                    val key = track.youtubeId ?: track.id
+                    YouTubeAudioResolver.invalidateCache(key)
+                }
             }
         }
     }

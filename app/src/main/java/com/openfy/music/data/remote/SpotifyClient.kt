@@ -9,6 +9,7 @@ import com.openfy.music.data.model.Artist
 import com.openfy.music.data.model.Playlist
 import com.openfy.music.data.model.Track
 import com.openfy.music.data.model.UserProfile
+import com.openfy.music.util.ArtworkUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -95,6 +96,23 @@ object SpotifyClient {
         accessToken
     }
 
+    private fun extractHighestResSpotifyImage(images: com.google.gson.JsonArray?): String? {
+        if (images == null || images.size() == 0) return null
+        var bestUrl: String? = null
+        var maxPixels = -1
+        for (i in 0 until images.size()) {
+            val obj = images.get(i).asJsonObject
+            val width = obj.get("width")?.asInt ?: 0
+            val height = obj.get("height")?.asInt ?: 0
+            val pixels = width * height
+            if (pixels > maxPixels || bestUrl == null) {
+                maxPixels = pixels
+                bestUrl = obj.get("url")?.asString
+            }
+        }
+        return ArtworkUtils.getHighResArtworkUrl(bestUrl)
+    }
+
     suspend fun fetchProfile(): UserProfile? = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext null
         try {
@@ -108,9 +126,7 @@ object SpotifyClient {
                 val id = json.get("id")?.asString ?: "spotify_user"
                 val name = json.get("display_name")?.asString ?: "Spotify User"
                 val images = json.getAsJsonArray("images")
-                val avatar = if (images != null && images.size() > 0) {
-                    images[0].asJsonObject.get("url")?.asString
-                } else null
+                val avatar = extractHighestResSpotifyImage(images)
 
                 val profile = UserProfile(id, name, avatarUrl = avatar)
                 userProfile = profile
@@ -148,7 +164,7 @@ object SpotifyClient {
                     val albumObj = t.getAsJsonObject("album")
                     val albumName = albumObj?.get("name")?.asString ?: ""
                     val albumImages = albumObj?.getAsJsonArray("images")
-                    val cover = albumImages?.firstOrNull()?.asJsonObject?.get("url")?.asString
+                    val cover = extractHighestResSpotifyImage(albumImages)
                     val album = Album(name = albumName, coverUrl = cover)
 
                     val duration = (t.get("duration_ms")?.asInt ?: 0) / 1000
@@ -192,7 +208,7 @@ object SpotifyClient {
                     val title = obj.get("name")?.asString ?: "Untitled Playlist"
                     val desc = obj.get("description")?.asString
                     val images = obj.getAsJsonArray("images")
-                    val cover = images?.firstOrNull()?.asJsonObject?.get("url")?.asString
+                    val cover = extractHighestResSpotifyImage(images)
                     val count = obj.getAsJsonObject("tracks")?.get("total")?.asInt ?: 0
 
                     playlists.add(
@@ -239,7 +255,7 @@ object SpotifyClient {
                     val albumObj = t.getAsJsonObject("album")
                     val albumName = albumObj?.get("name")?.asString ?: ""
                     val albumImages = albumObj?.getAsJsonArray("images")
-                    val cover = albumImages?.firstOrNull()?.asJsonObject?.get("url")?.asString
+                    val cover = extractHighestResSpotifyImage(albumImages)
                     val album = Album(name = albumName, coverUrl = cover)
                     val duration = (t.get("duration_ms")?.asInt ?: 0) / 1000
 

@@ -131,34 +131,31 @@ fun NowPlayingSheet(
                         .padding(vertical = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val coverUrl = currentTrack?.coverUrl
-                    if (!coverUrl.isNullOrEmpty()) {
-                        AsyncImage(
-                            model = coverUrl,
-                            contentDescription = currentTrack?.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .aspectRatio(1f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(SpotifyDark),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MusicNote,
-                                contentDescription = null,
-                                tint = SpotifySubdued,
-                                modifier = Modifier.size(80.dp)
-                            )
+                    OpenfyAsyncImage(
+                        url = currentTrack?.coverUrl,
+                        contentDescription = currentTrack?.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(12.dp)),
+                        placeholder = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(SpotifyDark),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = SpotifySubdued,
+                                    modifier = Modifier.size(80.dp)
+                                )
+                            }
                         }
-                    }
+                    )
                 }
 
                 // Controls Area

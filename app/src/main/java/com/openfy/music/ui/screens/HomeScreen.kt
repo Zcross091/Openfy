@@ -9,8 +9,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +30,7 @@ import com.openfy.music.data.AccountManager
 import com.openfy.music.data.model.Track
 import com.openfy.music.data.remote.YouTubeAudioResolver
 import com.openfy.music.player.PlaybackManager
+import com.openfy.music.ui.components.OpenfyAsyncImage
 import com.openfy.music.ui.components.TrackRowItem
 import com.openfy.music.ui.theme.SpotifyBlack
 import com.openfy.music.ui.theme.SpotifyGreen
@@ -38,6 +41,7 @@ import java.util.Calendar
 @Composable
 fun HomeScreen(
     onNavigateToLiked: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var trendingTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
@@ -85,18 +89,34 @@ fun HomeScreen(
                         fontWeight = FontWeight.Black
                     )
 
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF222222))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "Active: ${activeProvider.name.lowercase().replaceFirstChar { it.uppercase() }}",
-                            color = SpotifyGreen,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF222222))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "Active: ${activeProvider.name.lowercase().replaceFirstChar { it.uppercase() }}",
+                                color = SpotifyGreen,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onOpenSettings,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = White
+                            )
+                        }
                     }
                 }
             }
@@ -232,27 +252,26 @@ private fun QuickCard(
             .clickable(onClick = onClick)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            if (!track.coverUrl.isNullOrEmpty()) {
-                AsyncImage(
-                    model = track.coverUrl,
-                    contentDescription = track.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(56.dp)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .background(Color(0xFF383838)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = White
-                    )
+            OpenfyAsyncImage(
+                url = track.coverUrl,
+                contentDescription = track.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(56.dp),
+                placeholder = {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF383838)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = null,
+                            tint = White
+                        )
+                    }
                 }
-            }
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = track.title,

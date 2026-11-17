@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +34,7 @@ import com.openfy.music.data.model.Track
 import com.openfy.music.data.remote.SpotifyClient
 import com.openfy.music.data.remote.YouTubeAudioResolver
 import com.openfy.music.player.PlaybackManager
+import com.openfy.music.ui.components.OpenfyAsyncImage
 import com.openfy.music.ui.components.TrackRowItem
 import com.openfy.music.ui.theme.Black
 import com.openfy.music.ui.theme.SpotifyBlack
@@ -42,6 +44,7 @@ import com.openfy.music.ui.theme.White
 
 @Composable
 fun LikedSongsScreen(
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedFilter by remember { mutableStateOf("Playlists") } // "Playlists" or "Liked Songs"
@@ -112,31 +115,30 @@ fun LikedSongsScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (!p.coverUrl.isNullOrEmpty()) {
-                                AsyncImage(
-                                    model = p.coverUrl,
-                                    contentDescription = p.title,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(110.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(110.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFF333333)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MusicNote,
-                                        contentDescription = null,
-                                        tint = White,
-                                        modifier = Modifier.size(48.dp)
-                                    )
+                            OpenfyAsyncImage(
+                                url = p.coverUrl,
+                                contentDescription = p.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(110.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                placeholder = {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF333333)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = White,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                    }
                                 }
-                            }
+                            )
 
                             Spacer(modifier = Modifier.width(16.dp))
 
@@ -254,12 +256,29 @@ fun LikedSongsScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
-                Text(
-                    text = "Your Library",
-                    color = White,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Your Library",
+                        color = White,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Black
+                    )
+
+                    IconButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = White
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChipPill(
@@ -471,31 +490,30 @@ fun LikedSongsScreen(
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (!playlist.coverUrl.isNullOrEmpty()) {
-                            AsyncImage(
-                                model = playlist.coverUrl,
-                                contentDescription = playlist.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0xFF333333)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MusicNote,
-                                    contentDescription = null,
-                                    tint = White,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                        OpenfyAsyncImage(
+                            url = playlist.coverUrl,
+                            contentDescription = playlist.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(6.dp)),
+                            placeholder = {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF333333)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MusicNote,
+                                        contentDescription = null,
+                                        tint = White,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
                             }
-                        }
+                        )
 
                         Spacer(modifier = Modifier.width(12.dp))
 

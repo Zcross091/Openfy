@@ -7,9 +7,17 @@ import kotlinx.coroutines.flow.asStateFlow
 
 enum class AudioQuality(val title: String, val description: String, val targetItag: Int, val fallbackItag: Int) {
     AUTO("Auto (Recommended)", "Best quality available (Opus ~160k with AAC fallback)", 251, 140),
-    HIGH("High Fidelity", "Opus audio stream (~160 kbps, itag 251)", 251, 140),
-    NORMAL("Normal", "AAC audio stream (~130 kbps, itag 140)", 140, 251),
-    DATA_SAVER("Data Saver", "Low bandwidth stream (~50-70 kbps, itag 250/249)", 250, 249)
+    HIGH("High (160k Opus)", "Opus audio stream (~160 kbps, itag 251)", 251, 140),
+    NORMAL("Normal (128k AAC)", "AAC audio stream (~128-130 kbps, itag 140)", 140, 251),
+    DATA_SAVER("Low (64k Data Saver)", "Low bandwidth stream (~50-70 kbps, itag 250/249)", 250, 249)
+}
+
+enum class StreamingClient(val title: String, val description: String, val clientKey: String) {
+    AUTO("Auto", "Automatically selects best client per track", "AUTO"),
+    ANDROID("Android Music", "Standard InnerTube Android Music client", "ANDROID_MUSIC"),
+    IOS("iOS Music", "Native iOS InnerTube client (AAC itag 140)", "IOS_MUSIC"),
+    TV("TV HTML5 Simply", "Lightweight TV client bypass (Cobalt)", "TVHTML5_SIMPLY"),
+    WEB("Web Remix", "YouTube Music desktop web client", "WEB_REMIX")
 }
 
 object SettingsManager {
@@ -27,6 +35,36 @@ object SettingsManager {
     )
     val audioQuality = _audioQuality.asStateFlow()
 
+    private val _streamingClient = MutableStateFlow(
+        try {
+            val saved = prefs.getString("streaming_client", StreamingClient.AUTO.name) ?: StreamingClient.AUTO.name
+            StreamingClient.valueOf(saved)
+        } catch (e: Exception) {
+            StreamingClient.AUTO
+        }
+    )
+    val streamingClient = _streamingClient.asStateFlow()
+
+    private val _gaplessPlayback = MutableStateFlow(
+        prefs.getBoolean("gapless_playback", true)
+    )
+    val gaplessPlayback = _gaplessPlayback.asStateFlow()
+
+    private val _focusAudio = MutableStateFlow(
+        prefs.getBoolean("focus_audio", true)
+    )
+    val focusAudio = _focusAudio.asStateFlow()
+
+    private val _highResArt = MutableStateFlow(
+        prefs.getBoolean("high_res_art", true)
+    )
+    val highResArt = _highResArt.asStateFlow()
+
+    private val _showLyrics = MutableStateFlow(
+        prefs.getBoolean("show_lyrics", true)
+    )
+    val showLyrics = _showLyrics.asStateFlow()
+
     private val _enableLocalMusic = MutableStateFlow(
         prefs.getBoolean("enable_local_music", true)
     )
@@ -35,6 +73,31 @@ object SettingsManager {
     fun setAudioQuality(quality: AudioQuality) {
         prefs.edit().putString("audio_quality", quality.name).apply()
         _audioQuality.value = quality
+    }
+
+    fun setStreamingClient(client: StreamingClient) {
+        prefs.edit().putString("streaming_client", client.name).apply()
+        _streamingClient.value = client
+    }
+
+    fun setGaplessPlayback(enable: Boolean) {
+        prefs.edit().putBoolean("gapless_playback", enable).apply()
+        _gaplessPlayback.value = enable
+    }
+
+    fun setFocusAudio(enable: Boolean) {
+        prefs.edit().putBoolean("focus_audio", enable).apply()
+        _focusAudio.value = enable
+    }
+
+    fun setHighResArt(enable: Boolean) {
+        prefs.edit().putBoolean("high_res_art", enable).apply()
+        _highResArt.value = enable
+    }
+
+    fun setShowLyrics(enable: Boolean) {
+        prefs.edit().putBoolean("show_lyrics", enable).apply()
+        _showLyrics.value = enable
     }
 
     fun setEnableLocalMusic(enable: Boolean) {
