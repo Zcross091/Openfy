@@ -21,6 +21,7 @@ interface NativeAudioPlayer {
     fun resume()
     fun seekTo(positionMs: Long)
     fun stop()
+    fun setVolume(volume: Float) {}
 }
 
 interface AudioPlayerController {
@@ -88,6 +89,15 @@ object PlaybackManager : AudioPlayerController {
 
     private val _engineStatus = MutableStateFlow<String?>("RVX Audio Engine")
     val engineStatus: StateFlow<String?> = _engineStatus.asStateFlow()
+
+    private val _volume = MutableStateFlow(1.0f)
+    val volume: StateFlow<Float> = _volume.asStateFlow()
+
+    fun setVolume(volumeFraction: Float) {
+        val clamped = volumeFraction.coerceIn(0f, 1f)
+        _volume.value = clamped
+        nativePlayer?.setVolume(clamped)
+    }
 
     fun setNativePlayer(player: NativeAudioPlayer) {
         this.nativePlayer = player

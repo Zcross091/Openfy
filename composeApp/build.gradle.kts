@@ -18,6 +18,13 @@ kotlin {
         }
     }
 
+    jvm("desktop") {
+        @OptIn(ExperimentalKotlinGradlePluginApi::class)
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_21)
+        }
+    }
+
     val xcf = XCFramework("OpenfyKit")
     listOf(
         iosX64(),
@@ -64,6 +71,26 @@ kotlin {
             implementation(libs.kotlinx.coroutines.android)
         }
 
+        val desktopMain by getting {
+            dependencies {
+                implementation(compose.desktop.currentOs)
+                implementation(libs.ktor.client.okhttp)
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.okhttp)
+                implementation(libs.gson)
+
+                // OpenJFX for desktop media streaming
+                implementation("org.openjfx:javafx-base:21.0.5")
+                implementation("org.openjfx:javafx-graphics:21.0.5")
+                implementation("org.openjfx:javafx-controls:21.0.5")
+                implementation("org.openjfx:javafx-media:21.0.5")
+                implementation("org.openjfx:javafx-base:21.0.5:win")
+                implementation("org.openjfx:javafx-graphics:21.0.5:win")
+                implementation("org.openjfx:javafx-controls:21.0.5:win")
+                implementation("org.openjfx:javafx-media:21.0.5:win")
+            }
+        }
+
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)
         }
@@ -78,8 +105,8 @@ android {
         applicationId = "com.openfy.music"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.3.3"
+        versionCode = 8
+        versionName = "1.3.4"
     }
 
     packaging {
@@ -97,5 +124,30 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+    }
+}
+
+compose.desktop {
+    application {
+        mainClass = "com.openfy.music.MainKt"
+
+        nativeDistributions {
+            targetFormats(
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe
+            )
+            packageName = "Openfy"
+            packageVersion = "1.3.4"
+            description = "Openfy - Spotify Windows Desktop Client"
+            copyright = "© 2026 Openfy"
+            vendor = "Openfy"
+
+            windows {
+                menuGroup = "Openfy"
+                upgradeUuid = "6f4a3c2b-1a9e-4d8c-bf5e-8e7c6d5b4a3a"
+                shortcut = true
+                menu = true
+            }
+        }
     }
 }

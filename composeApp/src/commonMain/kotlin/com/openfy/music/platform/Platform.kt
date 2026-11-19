@@ -15,4 +15,7 @@ object PlatformConfig {
 
     val isAndroid: Boolean
         get() = platform == PlatformType.ANDROID
+
+    val isDesktop: Boolean
+        get() = platform == PlatformType.DESKTOP
 }

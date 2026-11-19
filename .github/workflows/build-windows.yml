@@ -1,0 +1,139 @@
+name: Build & Release Openfy Windows Desktop
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build & Package Windows Desktop
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Ensure Gradle Executable & Check Environment
+        shell: bash
+        run: |
+          chmod +x gradlew
+          echo "=== Java Version ==="
+          java -version
+          echo "=== WiX Toolset Check ==="
+          which candle || true
+          which light || true
+
+      - name: Build Windows Application Distributable
+        shell: bash
+        run: |
+          ./gradlew :composeApp:createDistributable --stacktrace
+
+      - name: Package Windows Installers (MSI & EXE)
+        shell: bash
+        run: |
+          ./gradlew :composeApp:packageMsi :composeApp:packageExe --stacktrace || {
+            echo "::warning::MSI or EXE packaging failed, continuing with portable ZIP distribution."
+          }
+
+      - name: Prepare Windows Distribution Artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-artifacts-windows
+
+          # Extract Release Tag from versionName
+          $version = Select-String -Path composeApp/build.gradle.kts -Pattern 'versionName\s*=\s*"([^"]+)"' | ForEach-Object { $_.Matches.Groups[1].Value } | Select-Object -First 1
+          if (-not $version) {
+              $version = "1.3.4"
+          }
+          $releaseTag = "v$version"
+          echo "RELEASE_TAG=$releaseTag" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # 1. Package Portable ZIP from unpacked app distributable
+          $distPath = "composeApp/build/compose/binaries/main/app/Openfy"
+          if (Test-Path $distPath) {
+              Write-Host "Creating portable ZIP from $distPath..."
+              Compress-Archive -Path "$distPath\*" -DestinationPath "release-artifacts-windows/Openfy-windows-x64.zip" -Force
+              Copy-Item "release-artifacts-windows/Openfy-windows-x64.zip" "release-artifacts-windows/Openfy-$releaseTag-windows-x64.zip"
+          } else {
+              Write-Error "Application distributable not found at $distPath!"
+          }
+
+          # 2. Collect MSI installer if generated
+          $msiFiles = Get-ChildItem -Path "composeApp/build/compose/binaries/main/msi" -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
+          if ($msiFiles) {
+              $msi = $msiFiles[0].FullName
+              Write-Host "Found MSI installer at $msi"
+              Copy-Item $msi "release-artifacts-windows/Openfy.msi"
+              Copy-Item $msi "release-artifacts-windows/Openfy-$releaseTag.msi"
+          }
+
+          # 3. Collect EXE installer if generated
+          $exeFiles = Get-ChildItem -Path "composeApp/build/compose/binaries/main/exe" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue
+          if ($exeFiles) {
+              $exe = $exeFiles[0].FullName
+              Write-Host "Found EXE installer at $exe"
+              Copy-Item $exe "release-artifacts-windows/Openfy-Setup.exe"
+              Copy-Item $exe "release-artifacts-windows/Openfy-$releaseTag-Setup.exe"
+          }
+
+          # 4. Generate SHA256 checksums
+          Set-Location release-artifacts-windows
+          Get-FileHash -Algorithm SHA256 * | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Out-File -FilePath SHA256SUMS-windows.txt -Encoding ascii
+          Get-Content SHA256SUMS-windows.txt
+          Set-Location ..
+
+      - name: Upload Windows Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Openfy-Windows-Desktop
+          path: release-artifacts-windows/
+          retention-days: 30
+
+      - name: Publish Windows Assets to GitHub Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ env.RELEASE_TAG }}"
+          echo "Target tag: ${TAG}"
+
+          # Ensure the release exists or create it
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} exists. Uploading Windows artifacts..."
+            gh release upload "${TAG}" release-artifacts-windows/* --clobber
+          else
+            echo "Creating release ${TAG} with Windows artifacts..."
+            gh release create "${TAG}" release-artifacts-windows/* \
+              --title "Openfy ${TAG} - Spotify UI with RVX Audio Engine" \
+              --notes-file .github/release_notes.md
+          fi
+
+          # Also upload to v1.3.3 if it exists so users browsing v1.3.3 find Windows artifacts
+          if gh release view "v1.3.3" >/dev/null 2>&1; then
+            echo "Also updating v1.3.3 release with Windows assets..."
+            gh release upload "v1.3.3" release-artifacts-windows/* --clobber || true
+          fi
+
+          # Update rolling 'latest' release
+          if gh release view "latest" >/dev/null 2>&1; then
+            echo "Uploading Windows artifacts to 'latest' release..."
+            gh release upload latest release-artifacts-windows/* --clobber
+          fi

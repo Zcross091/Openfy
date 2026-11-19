@@ -17,12 +17,19 @@ import com.openfy.music.ui.screens.HomeScreen
 import com.openfy.music.ui.screens.LikedSongsScreen
 import com.openfy.music.ui.screens.SearchScreen
 import com.openfy.music.ui.screens.SettingsScreen
+import com.openfy.music.platform.PlatformConfig
+import com.openfy.music.ui.desktop.SpotifyDesktopLayout
 import com.openfy.music.ui.theme.Black
 import com.openfy.music.ui.theme.OpenfyTheme
 
 @Composable
 fun App() {
     OpenfyTheme {
+        if (PlatformConfig.isDesktop) {
+            SpotifyDesktopLayout()
+            return@OpenfyTheme
+        }
+
         var currentTab by remember { mutableStateOf(NavigationTab.HOME) }
         var isNowPlayingExpanded by remember { mutableStateOf(false) }
         var isLyricsOpen by remember { mutableStateOf(false) }
