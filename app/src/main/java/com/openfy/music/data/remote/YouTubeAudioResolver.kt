@@ -21,6 +21,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+import android.util.Base64
 
 data class ResolvedStream(
     val url: String,
@@ -233,6 +236,7 @@ object YouTubeAudioResolver {
 
     fun getClientUserAgent(client: StreamingClient): String {
         return when (client) {
+            StreamingClient.SAAVN -> "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
             StreamingClient.IOS -> "com.google.ios.youtube/20.10.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)"
             StreamingClient.ANDROID_VR -> "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
             StreamingClient.VISIONOS -> "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
@@ -250,17 +254,131 @@ object YouTubeAudioResolver {
                 reqBuilder.header("User-Agent", userAgent)
             }
             val resp = fastCheckClient.newCall(reqBuilder.build()).execute()
-            resp.use {
-                it.code in 200..206
+            val initialOk = resp.use { it.code in 200..206 }
+            if (!initialOk) return false
+
+            // For Google Video CDN streams, check whether the CDN allows reading past 1MB.
+            // If the CDN returns 403 on range past 1048576, mark stream as unplayable so fallback engages.
+            if (url.contains("googlevideo.com")) {
+                val past1MbReq = Request.Builder()
+                    .url(url)
+                    .header("Range", "bytes=1048576-1049000")
+                if (!userAgent.isNullOrEmpty()) {
+                    past1MbReq.header("User-Agent", userAgent)
+                }
+                val past1MbResp = fastCheckClient.newCall(past1MbReq.build()).execute()
+                val past1MbOk = past1MbResp.use { it.code in 200..206 }
+                if (!past1MbOk) {
+                    return false
+                }
             }
+
+            true
         } catch (_: Exception) {
             false
         }
     }
 
     /**
+     * Resolves high-fidelity, unthrottled 320kbps / 160kbps AAC audio streams directly
+     * from JioSaavn CDN with full HTTP Range support (no 1MB cutoffs, no 1.5 KB/s speed caps).
+     */
+    suspend fun fetchSaavnStreamUrl(
+        title: String,
+        artist: String,
+        quality: AudioQuality = AudioQuality.AUTO
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val cleanTitle = title.replace(Regex("\\(.*\\)|\\[.*\\]|feat\\..*|ft\\..*", RegexOption.IGNORE_CASE), "").trim()
+            val cleanArtist = artist.split(",", ";", "&", "feat.", "ft.").firstOrNull()?.trim() ?: artist
+            val searchQueries = listOf(
+                "$cleanTitle $cleanArtist",
+                "$title $artist",
+                cleanTitle
+            )
+
+            var songId: String? = null
+            for (q in searchQueries) {
+                if (q.isBlank()) continue
+                val encodedQ = java.net.URLEncoder.encode(q, "UTF-8")
+                val searchUrl = "https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=$encodedQ&_format=json&_marker=0&ctx=android"
+                val searchReq = Request.Builder()
+                    .url(searchUrl)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36")
+                    .build()
+
+                val searchResp = fastCheckClient.newCall(searchReq).execute()
+                if (searchResp.isSuccessful) {
+                    val body = searchResp.body?.string() ?: ""
+                    val json = gson.fromJson(body, JsonObject::class.java)
+                    val songs = json.getAsJsonObject("songs")?.getAsJsonArray("data")
+                    if (songs != null && songs.size() > 0) {
+                        val first = songs.get(0).asJsonObject
+                        songId = first.get("id")?.asString
+                        if (!songId.isNullOrEmpty()) break
+                    }
+                }
+            }
+
+            if (songId.isNullOrEmpty()) return@withContext null
+
+            val detailUrl = "https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=$songId&_format=json&_marker=0&ctx=android"
+            val detailReq = Request.Builder()
+                .url(detailUrl)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36")
+                .build()
+
+            val detailResp = fastCheckClient.newCall(detailReq).execute()
+            if (!detailResp.isSuccessful) return@withContext null
+
+            val detailBody = detailResp.body?.string() ?: ""
+            val detailJson = gson.fromJson(detailBody, JsonObject::class.java)
+            val songObj = detailJson.getAsJsonObject(songId) ?: return@withContext null
+            val encryptedUrl = songObj.get("encrypted_media_url")?.asString ?: return@withContext null
+
+            val decrypted = decryptSaavnUrl(encryptedUrl) ?: return@withContext null
+
+            val targetUrl = when (quality) {
+                AudioQuality.DATA_SAVER -> decrypted.replace("_96.mp4", "_96.mp4")
+                AudioQuality.NORMAL -> decrypted.replace("_96.mp4", "_160.mp4")
+                else -> decrypted.replace("_96.mp4", "_320.mp4")
+            }
+
+            if (isStreamPlayable(targetUrl)) {
+                return@withContext targetUrl
+            }
+
+            val fallback160 = decrypted.replace("_96.mp4", "_160.mp4")
+            if (isStreamPlayable(fallback160)) {
+                return@withContext fallback160
+            }
+
+            if (isStreamPlayable(decrypted)) {
+                return@withContext decrypted
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        null
+    }
+
+    private fun decryptSaavnUrl(encrypted: String): String? {
+        return try {
+            val key = "38346591".toByteArray(Charsets.UTF_8)
+            val keySpec = SecretKeySpec(key, "DES")
+            val cipher = Cipher.getInstance("DES/ECB/PKCS5Padding")
+            cipher.init(Cipher.DECRYPT_MODE, keySpec)
+            val decoded = Base64.decode(encrypted.trim(), Base64.DEFAULT)
+            val decrypted = cipher.doFinal(decoded)
+            String(decrypted, Charsets.UTF_8).trim()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * Resolves the best playable audio stream for a track with dynamic RVX fallback:
-     * Attempts preferred client -> automatically switches to fallbacks (iOS, Android VR, visionOS, NewPipe, TV, Piped)
+     * Attempts preferred client -> automatically switches to fallbacks (JioSaavn, iOS, Android VR, visionOS, NewPipe, TV, Piped)
      * if the stream fails or returns 403.
      */
     suspend fun resolveStream(
@@ -272,7 +390,7 @@ object YouTubeAudioResolver {
         if (failedClients.isEmpty()) {
             streamCache[cacheKey]?.let { cachedUrl ->
                 if (isStreamUrlValid(cachedUrl)) {
-                    val client = streamClientCache[cacheKey] ?: StreamingClient.IOS
+                    val client = streamClientCache[cacheKey] ?: StreamingClient.SAAVN
                     return@withContext ResolvedStream(cachedUrl, client, getClientUserAgent(client))
                 } else {
                     streamCache.remove(cacheKey)
@@ -280,18 +398,6 @@ object YouTubeAudioResolver {
                 }
             }
         }
-
-        var videoId = if (track.youtubeId?.length == 11) {
-            track.youtubeId
-        } else if (track.id.length == 11 && !track.id.startsWith("LOCAL:") && !track.id.startsWith("spotify:")) {
-            track.id
-        } else {
-            // Search for YouTube videoId using Title + Artist
-            val searchResults = searchTracks("${track.title} ${track.artistNames}", limit = 3)
-            searchResults.firstOrNull()?.youtubeId ?: searchResults.firstOrNull()?.id
-        }
-
-        if (videoId == null) return@withContext null
 
         val quality = SettingsManager.audioQuality.value
 
@@ -302,6 +408,7 @@ object YouTubeAudioResolver {
         }
 
         val defaultChain = listOf(
+            StreamingClient.SAAVN,       // High-speed 320k unthrottled direct CDN (no 1MB cap, no 1.5KB/s throttle)
             StreamingClient.IOS,         // Fast, unciphered, bypasses music login requirements
             StreamingClient.ANDROID_VR,  // RVX #1 Spoof Client (Meta Quest VR, no signature cipher)
             StreamingClient.VISIONOS,    // Apple visionOS client
@@ -315,14 +422,30 @@ object YouTubeAudioResolver {
             }
         }
 
+        // Lazy resolution of YouTube videoId only when a YouTube client in fallbackOrder is reached
+        var videoId: String? = null
+        suspend fun getOrResolveVideoId(): String? {
+            if (videoId != null) return videoId
+            videoId = if (track.youtubeId?.length == 11) {
+                track.youtubeId
+            } else if (track.id.length == 11 && !track.id.startsWith("LOCAL:") && !track.id.startsWith("spotify:")) {
+                track.id
+            } else {
+                val searchResults = searchTracks("${track.title} ${track.artistNames}", limit = 3)
+                searchResults.firstOrNull()?.youtubeId ?: searchResults.firstOrNull()?.id
+            }
+            return videoId
+        }
+
         // Pass 1: Try candidate clients and pre-verify range stream viability
         for (client in fallbackOrder) {
             val candidateUrl = when (client) {
-                StreamingClient.IOS -> fetchIosStreamUrl(videoId, quality)
-                StreamingClient.ANDROID_VR -> fetchAndroidVrStreamUrl(videoId, quality)
-                StreamingClient.VISIONOS -> fetchVisionOsStreamUrl(videoId, quality)
-                StreamingClient.NEWPIPE -> fetchNewPipeStreamUrl(videoId, quality)
-                StreamingClient.TV -> fetchTvHtml5StreamUrl(videoId, quality)
+                StreamingClient.SAAVN -> fetchSaavnStreamUrl(track.title, track.artistNames, quality)
+                StreamingClient.IOS -> getOrResolveVideoId()?.let { fetchIosStreamUrl(it, quality) }
+                StreamingClient.ANDROID_VR -> getOrResolveVideoId()?.let { fetchAndroidVrStreamUrl(it, quality) }
+                StreamingClient.VISIONOS -> getOrResolveVideoId()?.let { fetchVisionOsStreamUrl(it, quality) }
+                StreamingClient.NEWPIPE -> getOrResolveVideoId()?.let { fetchNewPipeStreamUrl(it, quality) }
+                StreamingClient.TV -> getOrResolveVideoId()?.let { fetchTvHtml5StreamUrl(it, quality) }
                 else -> null
             }
 
@@ -339,10 +462,11 @@ object YouTubeAudioResolver {
         // Pass 2: If fast pre-check was blocked by CDN or timed out, attempt raw stream URLs
         for (client in fallbackOrder) {
             val candidateUrl = when (client) {
-                StreamingClient.IOS -> fetchIosStreamUrl(videoId, quality)
-                StreamingClient.ANDROID_VR -> fetchAndroidVrStreamUrl(videoId, quality)
-                StreamingClient.VISIONOS -> fetchVisionOsStreamUrl(videoId, quality)
-                StreamingClient.NEWPIPE -> fetchNewPipeStreamUrl(videoId, quality)
+                StreamingClient.SAAVN -> fetchSaavnStreamUrl(track.title, track.artistNames, quality)
+                StreamingClient.IOS -> getOrResolveVideoId()?.let { fetchIosStreamUrl(it, quality) }
+                StreamingClient.ANDROID_VR -> getOrResolveVideoId()?.let { fetchAndroidVrStreamUrl(it, quality) }
+                StreamingClient.VISIONOS -> getOrResolveVideoId()?.let { fetchVisionOsStreamUrl(it, quality) }
+                StreamingClient.NEWPIPE -> getOrResolveVideoId()?.let { fetchNewPipeStreamUrl(it, quality) }
                 else -> null
             }
             if (!candidateUrl.isNullOrEmpty()) {
@@ -354,9 +478,12 @@ object YouTubeAudioResolver {
         }
 
         // Pass 3: External Piped distributed instance fallback
-        val pipedUrl = fetchPipedStreamUrl(videoId, quality)
-        if (!pipedUrl.isNullOrEmpty()) {
-            return@withContext ResolvedStream(pipedUrl, StreamingClient.AUTO, "Mozilla/5.0")
+        val ytId = getOrResolveVideoId()
+        if (ytId != null) {
+            val pipedUrl = fetchPipedStreamUrl(ytId, quality)
+            if (!pipedUrl.isNullOrEmpty()) {
+                return@withContext ResolvedStream(pipedUrl, StreamingClient.AUTO, "Mozilla/5.0")
+            }
         }
 
         null

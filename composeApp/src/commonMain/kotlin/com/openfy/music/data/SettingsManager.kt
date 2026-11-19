@@ -37,7 +37,8 @@ enum class AudioQuality(val title: String, val description: String, val targetIt
 }
 
 enum class StreamingClient(val title: String, val description: String, val clientKey: String) {
-    AUTO("Auto Fallback (RVX)", "Automatically tries Android VR, iOS, visionOS & NewPipe", "AUTO"),
+    AUTO("Auto Fallback", "Automatically tries JioSaavn HQ, iOS, Android VR & NewPipe", "AUTO"),
+    SAAVN("JioSaavn HQ (320k)", "Direct 320kbps CD-quality audio (No Throttling, Full Length)", "SAAVN"),
     ANDROID_VR("Android VR (RVX Default)", "Primary ReVanced VR client (Unthrottled, no cipher)", "ANDROID_VR"),
     IOS("iOS Direct", "Apple iOS Client (Unrestricted direct AAC)", "IOS"),
     VISIONOS("Apple visionOS", "Apple visionOS Cobalt Client", "VISIONOS"),

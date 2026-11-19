@@ -272,6 +272,7 @@ object YouTubeAudioResolver {
 
     fun getClientUserAgent(client: StreamingClient): String {
         return when (client) {
+            StreamingClient.SAAVN -> "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
             StreamingClient.IOS -> "com.google.ios.youtube/20.10.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)"
             StreamingClient.ANDROID_VR -> "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
             StreamingClient.VISIONOS -> "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
@@ -282,7 +283,7 @@ object YouTubeAudioResolver {
 
     /**
      * Resolves the best audio stream for a track using dynamic client fallback:
-     * Attempts preferred client -> falls back through iOS, Android VR, visionOS, TV, and Piped.
+     * Attempts preferred client -> falls back through JioSaavn, iOS, Android VR, visionOS, TV, and Piped.
      */
     suspend fun resolveStream(
         track: Track,
@@ -293,7 +294,7 @@ object YouTubeAudioResolver {
         if (failedClients.isEmpty()) {
             streamCache[cacheKey]?.let { cachedUrl ->
                 if (isStreamUrlValid(cachedUrl)) {
-                    val client = streamClientCache[cacheKey] ?: StreamingClient.IOS
+                    val client = streamClientCache[cacheKey] ?: StreamingClient.SAAVN
                     return@withContext ResolvedStream(cachedUrl, client, getClientUserAgent(client))
                 } else {
                     streamCache.remove(cacheKey)
@@ -321,9 +322,11 @@ object YouTubeAudioResolver {
         }
 
         val defaultChain = listOf(
+            StreamingClient.SAAVN,
             StreamingClient.IOS,
             StreamingClient.ANDROID_VR,
             StreamingClient.VISIONOS,
+            StreamingClient.NEWPIPE,
             StreamingClient.TV
         )
 

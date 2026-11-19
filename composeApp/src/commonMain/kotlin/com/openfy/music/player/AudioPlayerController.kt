@@ -122,7 +122,7 @@ object PlaybackManager : AudioPlayerController {
             YouTubeAudioResolver.invalidateCache(key)
             val current = _currentStreamingClient.value
             failedClientsForCurrentTrack.add(current)
-            if (failedClientsForCurrentTrack.size < 5) {
+            if (failedClientsForCurrentTrack.size < 6) {
                 _engineStatus.value = "Error on ${current.title}, failing over..."
                 playWithFallback(track)
             } else {
@@ -166,7 +166,7 @@ object PlaybackManager : AudioPlayerController {
         val track = _currentTrack.value ?: return
         val current = _currentStreamingClient.value
         failedClientsForCurrentTrack.add(current)
-        if (failedClientsForCurrentTrack.size >= 5) {
+        if (failedClientsForCurrentTrack.size >= 6) {
             failedClientsForCurrentTrack.clear()
         }
         playWithFallback(track)

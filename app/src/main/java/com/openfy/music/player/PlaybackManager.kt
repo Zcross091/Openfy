@@ -89,9 +89,9 @@ object PlaybackManager {
                     YouTubeAudioResolver.invalidateCache(key)
                     val failedClient = _currentStreamingClient.value
                     failedClientsForCurrentTrack.add(failedClient)
-                    if (failedClientsForCurrentTrack.size < 5) {
+                    if (failedClientsForCurrentTrack.size < 6) {
                         _engineStatus.value = "Error on ${failedClient.title}, failing over..."
-                        attemptFallbackPlayback(track)
+                        attemptFallbackPlayback(track, _currentPositionMs.value)
                     } else {
                         _isLoading.value = false
                         _isPlaying.value = false
@@ -119,7 +119,7 @@ object PlaybackManager {
         context.startService(intent)
     }
 
-    private fun applyMediaItem(track: Track, streamUrl: String) {
+    private fun applyMediaItem(track: Track, streamUrl: String, resumePositionMs: Long = 0L) {
         val highResCover = ArtworkUtils.getHighResArtworkUrl(track.coverUrl)
         val metadata = MediaMetadata.Builder()
             .setTitle(track.title)
@@ -143,6 +143,9 @@ object PlaybackManager {
         if (player != null) {
             player.setMediaItem(mediaItem)
             player.prepare()
+            if (resumePositionMs > 1000L) {
+                player.seekTo(resumePositionMs)
+            }
             player.play()
         } else {
             // Service is still spinning up; queue it for instant playback on service ready
@@ -150,7 +153,7 @@ object PlaybackManager {
         }
     }
 
-    private fun attemptFallbackPlayback(track: Track) {
+    private fun attemptFallbackPlayback(track: Track, resumePositionMs: Long = _currentPositionMs.value) {
         scope.launch {
             _isLoading.value = true
             val resolved = YouTubeAudioResolver.resolveStream(
@@ -160,7 +163,7 @@ object PlaybackManager {
             if (resolved != null) {
                 _currentStreamingClient.value = resolved.client
                 _engineStatus.value = "Active: ${resolved.client.title}"
-                applyMediaItem(track, resolved.url)
+                applyMediaItem(track, resolved.url, resumePositionMs)
             } else {
                 _isLoading.value = false
                 _isPlaying.value = false
@@ -173,10 +176,10 @@ object PlaybackManager {
         val track = _currentTrack.value ?: return
         val current = _currentStreamingClient.value
         failedClientsForCurrentTrack.add(current)
-        if (failedClientsForCurrentTrack.size >= 5) {
+        if (failedClientsForCurrentTrack.size >= 6) {
             failedClientsForCurrentTrack.clear()
         }
-        attemptFallbackPlayback(track)
+        attemptFallbackPlayback(track, _currentPositionMs.value)
     }
 
     fun playTrack(track: Track, newQueue: List<Track>? = null) {
@@ -275,12 +278,41 @@ object PlaybackManager {
         _repeatMode.value = (_repeatMode.value + 1) % 3
     }
 
+    private var stallCount = 0
+    private var lastRecordedPos = -1L
+
     private fun startProgressTicker() {
         progressJob?.cancel()
+        stallCount = 0
+        lastRecordedPos = -1L
         progressJob = scope.launch {
             while (isActive) {
                 exoPlayer?.let { player ->
-                    _currentPositionMs.value = player.currentPosition
+                    val pos = player.currentPosition
+                    _currentPositionMs.value = pos
+
+                    // Stall detection watchdog:
+                    // If player is playing (playWhenReady == true),
+                    // but stuck in STATE_BUFFERING or position hasn't advanced for >4 seconds:
+                    if (player.playWhenReady && _isPlaying.value) {
+                        if (player.playbackState == Player.STATE_BUFFERING || (pos == lastRecordedPos && pos > 0)) {
+                            stallCount++
+                            if (stallCount >= 8) { // 8 * 500ms = 4 seconds of freeze
+                                stallCount = 0
+                                _currentTrack.value?.let { track ->
+                                    val current = _currentStreamingClient.value
+                                    failedClientsForCurrentTrack.add(current)
+                                    _engineStatus.value = "Stall detected on ${current.title}, auto-switching..."
+                                    attemptFallbackPlayback(track, pos)
+                                }
+                            }
+                        } else {
+                            stallCount = 0
+                        }
+                    } else {
+                        stallCount = 0
+                    }
+                    lastRecordedPos = pos
                 }
                 delay(500)
             }
@@ -290,5 +322,7 @@ object PlaybackManager {
     private fun stopProgressTicker() {
         progressJob?.cancel()
         progressJob = null
+        stallCount = 0
+        lastRecordedPos = -1L
     }
 }
