@@ -99,9 +99,10 @@ object IosAudioPlayer : NativeAudioPlayer {
         configureAudioSession()
         currentTrack = track
 
-        val nsUrl = NSURL.URLWithString(url)
+        val cleanUrl = url.trim()
+        val nsUrl = NSURL.URLWithString(cleanUrl)
         if (nsUrl == null) {
-            println("[IosAudioPlayer] Invalid audio URL: $url")
+            println("[IosAudioPlayer] Invalid audio URL: $cleanUrl")
             PlaybackManager.updatePlaybackState(isPlaying = false, isLoading = false)
             return
         }

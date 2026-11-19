@@ -718,18 +718,14 @@ object YouTubeAudioResolver {
         val isIos = PlatformConfig.isIos
 
         val (targetItag, fallbackItag) = if (quality == AudioQuality.AUTO) {
-            if (isIos) {
-                // iOS: AAC 128k itag 140 for AVPlayer hardware acceleration
-                Pair(140, 251)
-            } else {
-                // Android: Opus 160k itag 251
-                Pair(251, 140)
-            }
+            // Both iOS and Android: AAC 128k itag 140 accepts HTTP 206 Partial Content range requests
+            Pair(140, 251)
         } else {
             Pair(quality.targetItag, quality.fallbackItag)
         }
 
         var directMatchUrl: String? = null
+        var aac140Url: String? = null
         var fallbackMatchUrl: String? = null
         var genericUrl: String? = null
         var highestBitrate = 0L
@@ -756,6 +752,10 @@ object YouTubeAudioResolver {
 
             if (resolvedUrl.isNullOrEmpty()) continue
 
+            if (itag == 140) {
+                aac140Url = resolvedUrl
+            }
+
             if (itag == targetItag) {
                 directMatchUrl = resolvedUrl
                 break
@@ -767,7 +767,7 @@ object YouTubeAudioResolver {
             }
         }
 
-        return directMatchUrl ?: fallbackMatchUrl ?: genericUrl
+        return directMatchUrl ?: aac140Url ?: fallbackMatchUrl ?: genericUrl
     }
 
     suspend fun rateSong(videoId: String, isLiked: Boolean): Boolean = withContext(Dispatchers.IO) {

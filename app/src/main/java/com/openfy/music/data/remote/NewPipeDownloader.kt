@@ -14,9 +14,17 @@ class NewPipeDownloader(private val client: OkHttpClient) : Downloader() {
         val httpMethod = request.httpMethod()
         val dataToSend = request.dataToSend()
 
+        val body = if (dataToSend != null) {
+            dataToSend.toRequestBody(null)
+        } else if (httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH") {
+            ByteArray(0).toRequestBody(null)
+        } else {
+            null
+        }
+
         val reqBuilder = Request.Builder()
             .url(request.url())
-            .method(httpMethod, dataToSend?.toRequestBody(null))
+            .method(httpMethod, body)
 
         request.headers()?.forEach { (headerName, values) ->
             values.forEach { v ->

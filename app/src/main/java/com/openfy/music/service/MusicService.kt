@@ -25,6 +25,12 @@ class MusicService : MediaSessionService() {
             .setKeepPostFor302Redirects(true)
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(15000)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Accept" to "*/*",
+                    "Accept-Encoding" to "identity"
+                )
+            )
 
         // 2. Configure snappy, low-latency buffer to start playback within 1.5 seconds
         val loadControl = DefaultLoadControl.Builder()

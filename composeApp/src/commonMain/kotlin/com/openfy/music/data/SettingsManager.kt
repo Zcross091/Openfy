@@ -30,8 +30,8 @@ class MapSettings : Settings {
 }
 
 enum class AudioQuality(val title: String, val description: String, val targetItag: Int, val fallbackItag: Int) {
-    AUTO("Auto (Recommended)", "Best quality available (Opus ~160k on Android, AAC ~130k on iOS)", 251, 140),
-    HIGH("High (160k Opus)", "Highest fidelity Opus audio stream (~160 kbps, itag 251)", 251, 140),
+    AUTO("Auto (Recommended)", "Best quality available (Unrestricted 128k AAC - High Stability)", 140, 251),
+    HIGH("High (128-140k AAC)", "Highest fidelity AAC audio stream (~128-140 kbps, itag 140)", 140, 251),
     NORMAL("Normal (128k AAC)", "Standard AAC audio stream (~128-130 kbps, itag 140)", 140, 251),
     DATA_SAVER("Low (64k Data Saver)", "Low bandwidth audio stream (~50-70 kbps, itag 250/249)", 250, 249)
 }

@@ -6,8 +6,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 enum class AudioQuality(val title: String, val description: String, val targetItag: Int, val fallbackItag: Int) {
-    AUTO("Auto (Recommended)", "Best quality available (Opus ~160k with AAC fallback)", 251, 140),
-    HIGH("High (160k Opus)", "Opus audio stream (~160 kbps, itag 251)", 251, 140),
+    AUTO("Auto (Recommended)", "Best quality available (Unrestricted 128k AAC - High Stability)", 140, 251),
+    HIGH("High (128-140k AAC)", "AAC audio stream (~128-140 kbps, itag 140)", 140, 251),
     NORMAL("Normal (128k AAC)", "AAC audio stream (~128-130 kbps, itag 140)", 140, 251),
     DATA_SAVER("Low (64k Data Saver)", "Low bandwidth stream (~50-70 kbps, itag 250/249)", 250, 249)
 }

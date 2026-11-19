@@ -249,17 +249,12 @@ object YouTubeAudioResolver {
 
         val quality = SettingsManager.audioQuality.value
 
-        // Tier 0: Battle-tested NewPipeExtractor (Deobfuscates YouTube signatures & avoids 403 chunk drops)
-        var streamUrl = withContext(Dispatchers.IO) { fetchNewPipeStreamUrl(videoId, quality) }
+        // Tier 1: IOS (Client 5, v20.10.1) - Primary unthrottled unciphered direct stream extractor (AAC itag 140)
+        var streamUrl = fetchIosStreamUrl(videoId, quality)
 
-        // Tier 1: IOS (Client 5, v20.10.1) fallback
+        // Tier 2: Battle-tested NewPipeExtractor (Deobfuscates YouTube signatures & avoids 403 chunk drops)
         if (streamUrl == null) {
-            streamUrl = fetchIosStreamUrl(videoId, quality)
-        }
-
-        // Tier 2: ANDROID_MUSIC (Client 21)
-        if (streamUrl == null) {
-            streamUrl = fetchAndroidMusicStreamUrl(videoId, quality)
+            streamUrl = withContext(Dispatchers.IO) { fetchNewPipeStreamUrl(videoId, quality) }
         }
 
         // Tier 3: WEB_REMIX (Client 67)
@@ -268,12 +263,17 @@ object YouTubeAudioResolver {
             streamUrl = fetchWebRemixStreamUrl(videoId, visitorData, quality)
         }
 
-        // Tier 4: TVHTML5 (Client 85)
+        // Tier 4: ANDROID_MUSIC (Client 21)
+        if (streamUrl == null) {
+            streamUrl = fetchAndroidMusicStreamUrl(videoId, quality)
+        }
+
+        // Tier 5: TVHTML5 (Client 85)
         if (streamUrl == null) {
             streamUrl = fetchTvHtml5StreamUrl(videoId, quality)
         }
 
-        // Tier 5: Piped fallback
+        // Tier 6: Piped fallback
         if (streamUrl == null) {
             streamUrl = fetchPipedStreamUrl(videoId, quality)
         }
@@ -362,7 +362,8 @@ object YouTubeAudioResolver {
             )
             val audioStreams = streamInfo.audioStreams
             if (!audioStreams.isNullOrEmpty()) {
-                val targetStream = audioStreams.find { it.itag == quality.targetItag }
+                val targetStream = audioStreams.find { it.itag == 140 }
+                    ?: audioStreams.find { it.itag == quality.targetItag }
                     ?: audioStreams.find { it.itag == quality.fallbackItag }
                     ?: audioStreams.maxByOrNull { it.averageBitrate }
                     ?: audioStreams.firstOrNull()
@@ -636,6 +637,7 @@ object YouTubeAudioResolver {
      */
     private suspend fun extractBestAudioFormat(formats: JsonArray, quality: AudioQuality): String? {
         var directMatchUrl: String? = null
+        var aac140Url: String? = null
         var fallbackMatchUrl: String? = null
         var genericUrl: String? = null
         var highestBitrate = 0L
@@ -663,6 +665,11 @@ object YouTubeAudioResolver {
 
             if (resolvedUrl.isNullOrEmpty()) continue
 
+            // Prefer AAC itag 140: YouTube Google Video CDN serves HTTP 206 Partial Content reliably on it
+            if (itag == 140) {
+                aac140Url = resolvedUrl
+            }
+
             // 2. Prioritize according to quality
             if (itag == quality.targetItag) {
                 directMatchUrl = resolvedUrl
@@ -675,7 +682,7 @@ object YouTubeAudioResolver {
             }
         }
 
-        return directMatchUrl ?: fallbackMatchUrl ?: genericUrl
+        return directMatchUrl ?: aac140Url ?: fallbackMatchUrl ?: genericUrl
     }
 
     /**

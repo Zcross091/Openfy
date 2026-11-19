@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 
 object PlaybackManager {
     private var exoPlayer: ExoPlayer? = null
+    private var pendingMediaItem: MediaItem? = null
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     private var progressJob: Job? = null
 
@@ -82,6 +83,14 @@ object PlaybackManager {
                 }
             }
         })
+
+        // Instantly launch pending media item if user tapped a song before service initialized
+        pendingMediaItem?.let { item ->
+            pendingMediaItem = null
+            player.setMediaItem(item)
+            player.prepare()
+            player.play()
+        }
     }
 
     private fun ensureServiceRunning() {
@@ -110,7 +119,7 @@ object PlaybackManager {
                 } else {
                     YouTubeAudioResolver.resolveStreamUrl(track)
                 }
-                if (streamUrl != null && exoPlayer != null) {
+                if (streamUrl != null) {
                     val highResCover = ArtworkUtils.getHighResArtworkUrl(track.coverUrl)
                     val metadata = MediaMetadata.Builder()
                         .setTitle(track.title)
@@ -130,10 +139,14 @@ object PlaybackManager {
                         .setMediaMetadata(metadata)
                         .build()
 
-                    exoPlayer?.run {
-                        setMediaItem(mediaItem)
-                        prepare()
-                        play()
+                    val player = exoPlayer
+                    if (player != null) {
+                        player.setMediaItem(mediaItem)
+                        player.prepare()
+                        player.play()
+                    } else {
+                        // Service is still spinning up; queue it for instant playback on service ready
+                        pendingMediaItem = mediaItem
                     }
                 } else {
                     _isLoading.value = false
