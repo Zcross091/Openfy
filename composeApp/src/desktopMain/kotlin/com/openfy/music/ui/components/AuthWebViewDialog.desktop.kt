@@ -28,7 +28,8 @@ actual fun AuthWebViewDialog(
     var manualToken by remember { mutableStateOf("") }
     val authUrl = when (provider) {
         AccountProvider.SPOTIFY -> "https://accounts.spotify.com/en/login"
-        AccountProvider.GOOGLE -> "https://accounts.google.com/ServiceLogin?service=youtube"
+        AccountProvider.YOUTUBE -> "https://accounts.google.com/ServiceLogin?service=youtube"
+        AccountProvider.GUEST -> ""
     }
 
     Dialog(onDismissRequest = onDismiss) {

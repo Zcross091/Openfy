@@ -549,7 +549,7 @@ private fun SpotifyDesktopSidebar(
                         ) {
                             AsyncImage(
                                 model = playlist.coverUrl,
-                                contentDescription = playlist.name,
+                                contentDescription = playlist.title,
                                 modifier = Modifier
                                     .size(48.dp)
                                     .clip(RoundedCornerShape(4.dp))
@@ -558,7 +558,7 @@ private fun SpotifyDesktopSidebar(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = playlist.name,
+                                    text = playlist.title,
                                     color = Color.White,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -1041,7 +1041,7 @@ private fun DesktopPlaylistDetailView(
             Row(verticalAlignment = Alignment.Bottom) {
                 AsyncImage(
                     model = playlist.coverUrl,
-                    contentDescription = playlist.name,
+                    contentDescription = playlist.title,
                     modifier = Modifier
                         .size(192.dp)
                         .clip(RoundedCornerShape(8.dp))
@@ -1050,7 +1050,7 @@ private fun DesktopPlaylistDetailView(
                 Spacer(modifier = Modifier.width(24.dp))
                 Column {
                     Text("PLAYLIST", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text(playlist.name, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Black)
+                    Text(playlist.title, color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Black)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "${playlist.trackCount} songs",
@@ -1304,7 +1304,12 @@ private fun DesktopLyricsView(
 
     LaunchedEffect(track.id) {
         isLoading = true
-        lyrics = LyricsClient.getSyncedLyrics(track.title, track.artistNames, track.durationSeconds)
+        lyrics = LyricsClient.getLyrics(
+            trackTitle = track.title,
+            artistName = track.artistNames,
+            durationSeconds = track.durationSeconds,
+            videoId = track.youtubeId ?: track.id
+        ).lines
         isLoading = false
     }
 
@@ -1328,9 +1333,10 @@ private fun DesktopLyricsView(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(lyrics) { line ->
-                    val isActive = currentPositionMs >= line.startTimeMs &&
-                            (line.endTimeMs == 0L || currentPositionMs <= line.endTimeMs)
+                itemsIndexed(lyrics) { index, line ->
+                    val lineTimeMs = (line.timeSeconds * 1000f).toLong()
+                    val nextLineTimeMs = lyrics.getOrNull(index + 1)?.let { (it.timeSeconds * 1000f).toLong() } ?: Long.MAX_VALUE
+                    val isActive = currentPositionMs in lineTimeMs until nextLineTimeMs
                     Text(
                         text = line.text,
                         color = if (isActive) Color.White else Color(0xFF6A6A6A),
@@ -1338,7 +1344,7 @@ private fun DesktopLyricsView(
                         fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { PlaybackManager.seekTo(line.startTimeMs) }
+                            .clickable { PlaybackManager.seekTo(lineTimeMs) }
                     )
                 }
             }

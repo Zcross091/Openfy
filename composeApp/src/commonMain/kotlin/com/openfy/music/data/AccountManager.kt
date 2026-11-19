@@ -41,6 +41,12 @@ object AccountManager {
     private val _activeAccount = MutableStateFlow(buildActiveAccount())
     val activeAccount = _activeAccount.asStateFlow()
 
+    private val _likedTracks = MutableStateFlow<List<Track>>(emptyList())
+    val likedTracks = _likedTracks.asStateFlow()
+
+    private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
+    val playlists = _playlists.asStateFlow()
+
     val isYouTubeConnected: Boolean
         get() = !_youtubeEmail.value.isNullOrEmpty() || !_youtubeCookie.value.isNullOrEmpty()
 
@@ -57,7 +63,26 @@ object AccountManager {
             scope.launch {
                 SpotifyClient.exchangeCookieForAccessToken(savedSpDc)
                 updateActiveAccount()
+                refreshLibrary()
             }
+        } else {
+            refreshLibrary()
+        }
+    }
+
+    fun refreshLibrary() {
+        scope.launch {
+            try {
+                _likedTracks.value = getLikedTracks()
+                _playlists.value = getUserPlaylists()
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun toggleLikeTrack(track: Track) {
+        scope.launch {
+            toggleLike(track)
+            refreshLibrary()
         }
     }
 
@@ -187,6 +212,7 @@ object AccountManager {
         _activeProvider.value = provider
         settings.putString("account_provider", provider.name)
         updateActiveAccount()
+        refreshLibrary()
     }
 
     /**
