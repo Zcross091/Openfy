@@ -659,7 +659,7 @@ private fun DesktopHomeView(
                     onClick = {
                         if (trendingTracks.isNotEmpty()) {
                             onSelectPlaylist(
-                                Playlist(id = "top_hits", name = "Today's Top Hits", tracks = trendingTracks)
+                                Playlist(id = "top_hits", title = "Today's Top Hits", tracks = trendingTracks)
                             )
                         }
                     },
