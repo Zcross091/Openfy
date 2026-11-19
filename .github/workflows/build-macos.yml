@@ -1,0 +1,161 @@
+name: Build & Release Openfy macOS Desktop
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: Build & Package macOS Desktop
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Ensure Gradle Wrapper Executable & Check Tools
+        run: |
+          chmod +x gradlew
+          echo "=== Java Version ==="
+          java -version
+          echo "=== macOS Version & Architecture ==="
+          sw_vers
+          uname -m
+
+      - name: Generate Multi-Resolution Apple ICNS Icon
+        run: |
+          if [ -f "composeApp/src/desktopMain/resources/icon.png" ]; then
+            echo "Generating retina-ready Apple icon.icns from PNG..."
+            mkdir -p Openfy.iconset
+            sips -z 16 16     composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_16x16.png
+            sips -z 32 32     composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_16x16@2x.png
+            sips -z 32 32     composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_32x32.png
+            sips -z 64 64     composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_32x32@2x.png
+            sips -z 128 128   composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_128x128.png
+            sips -z 256 256   composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_128x128@2x.png
+            sips -z 256 256   composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_256x256.png
+            sips -z 512 512   composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_256x256@2x.png
+            sips -z 512 512   composeApp/src/desktopMain/resources/icon.png --out Openfy.iconset/icon_512x512.png
+            iconutil -c icns Openfy.iconset -o composeApp/src/desktopMain/resources/icon.icns
+            rm -rf Openfy.iconset
+            echo "Successfully generated composeApp/src/desktopMain/resources/icon.icns"
+          fi
+
+      - name: Build macOS Application Distributable (.app)
+        run: |
+          ./gradlew :composeApp:createDistributable --stacktrace
+
+      - name: Ad-hoc Sign macOS Application Bundle
+        run: |
+          APP_PATH="composeApp/build/compose/binaries/main/app/Openfy.app"
+          if [ -d "$APP_PATH" ]; then
+            echo "Applying ad-hoc code signature to Openfy.app for Gatekeeper compatibility..."
+            codesign --force --deep --sign - "$APP_PATH" || true
+          else
+            echo "::warning::Openfy.app not found at $APP_PATH"
+          fi
+
+      - name: Package macOS Installers (DMG & PKG)
+        run: |
+          ./gradlew :composeApp:packageDmg :composeApp:packagePkg --stacktrace || {
+            echo "::warning::DMG or PKG packaging failed, continuing with portable .app ZIP distribution."
+          }
+
+      - name: Prepare macOS Distribution Artifacts
+        run: |
+          mkdir -p release-artifacts-macos
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          else
+            RELEASE_TAG="v$(grep -m 1 'versionName =' composeApp/build.gradle.kts | cut -d '"' -f2)"
+          fi
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_ENV
+
+          # 1. Package Portable ZIP from Openfy.app
+          APP_PATH="composeApp/build/compose/binaries/main/app/Openfy.app"
+          if [ -d "$APP_PATH" ]; then
+            echo "Creating portable ZIP from $APP_PATH using ditto..."
+            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" release-artifacts-macos/Openfy-macos.zip
+            cp release-artifacts-macos/Openfy-macos.zip "release-artifacts-macos/Openfy-${RELEASE_TAG}-macos.zip"
+          else
+            echo "::error::Application bundle Openfy.app not found at $APP_PATH!"
+            exit 1
+          fi
+
+          # 2. Collect DMG installer if generated
+          DMG_FILE=$(find composeApp/build/compose/binaries/main/dmg -name "*.dmg" | head -n 1)
+          if [ -n "$DMG_FILE" ] && [ -f "$DMG_FILE" ]; then
+            echo "Found DMG installer at $DMG_FILE"
+            cp "$DMG_FILE" release-artifacts-macos/Openfy.dmg
+            cp "$DMG_FILE" "release-artifacts-macos/Openfy-${RELEASE_TAG}.dmg"
+          fi
+
+          # 3. Collect PKG installer if generated
+          PKG_FILE=$(find composeApp/build/compose/binaries/main/pkg -name "*.pkg" | head -n 1)
+          if [ -n "$PKG_FILE" ] && [ -f "$PKG_FILE" ]; then
+            echo "Found PKG installer at $PKG_FILE"
+            cp "$PKG_FILE" release-artifacts-macos/Openfy.pkg
+            cp "$PKG_FILE" "release-artifacts-macos/Openfy-${RELEASE_TAG}.pkg"
+          fi
+
+          # 4. Generate SHA256 checksums
+          cd release-artifacts-macos
+          shasum -a 256 $(ls -1 | grep -v "SHA256SUMS") > SHA256SUMS-macos.txt
+          cat SHA256SUMS-macos.txt
+          cd ..
+
+      - name: Upload macOS Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Openfy-macOS-Desktop
+          path: release-artifacts-macos/
+          retention-days: 30
+
+      - name: Publish macOS Assets to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ env.RELEASE_TAG }}"
+          echo "Target tag: ${TAG}"
+
+          # Ensure the release exists or create it
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} exists. Uploading macOS artifacts..."
+            gh release upload "${TAG}" release-artifacts-macos/* --clobber
+          else
+            echo "Creating release ${TAG} with macOS artifacts..."
+            gh release create "${TAG}" release-artifacts-macos/* \
+              --title "Openfy ${TAG} - Spotify UI with RVX Audio Engine" \
+              --notes-file .github/release_notes.md
+          fi
+
+          # Also update v1.3.3 release with macOS assets
+          if gh release view "v1.3.3" >/dev/null 2>&1; then
+            echo "Also updating v1.3.3 release with macOS assets..."
+            gh release upload "v1.3.3" release-artifacts-macos/* --clobber || true
+          fi
+
+          # Update rolling 'latest' release
+          if gh release view "latest" >/dev/null 2>&1; then
+            echo "Uploading macOS artifacts to 'latest' release..."
+            gh release upload latest release-artifacts-macos/* --clobber
+          fi

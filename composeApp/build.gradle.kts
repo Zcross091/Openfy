@@ -79,7 +79,7 @@ kotlin {
                 implementation(libs.okhttp)
                 implementation(libs.gson)
 
-                // OpenJFX for desktop media streaming
+                // OpenJFX for desktop media streaming (Windows, macOS Intel & Apple Silicon)
                 implementation("org.openjfx:javafx-base:21.0.5")
                 implementation("org.openjfx:javafx-graphics:21.0.5")
                 implementation("org.openjfx:javafx-controls:21.0.5")
@@ -88,6 +88,14 @@ kotlin {
                 implementation("org.openjfx:javafx-graphics:21.0.5:win")
                 implementation("org.openjfx:javafx-controls:21.0.5:win")
                 implementation("org.openjfx:javafx-media:21.0.5:win")
+                implementation("org.openjfx:javafx-base:21.0.5:mac")
+                implementation("org.openjfx:javafx-graphics:21.0.5:mac")
+                implementation("org.openjfx:javafx-controls:21.0.5:mac")
+                implementation("org.openjfx:javafx-media:21.0.5:mac")
+                implementation("org.openjfx:javafx-base:21.0.5:mac-aarch64")
+                implementation("org.openjfx:javafx-graphics:21.0.5:mac-aarch64")
+                implementation("org.openjfx:javafx-controls:21.0.5:mac-aarch64")
+                implementation("org.openjfx:javafx-media:21.0.5:mac-aarch64")
             }
         }
 
@@ -133,12 +141,14 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Dmg,
+                org.jetbrains.compose.desktop.application.dsl.TargetFormat.Pkg,
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe
             )
             packageName = "Openfy"
             packageVersion = "1.3.4"
-            description = "Openfy - Spotify Windows Desktop Client"
+            description = "Openfy - Spotify Desktop Client"
             copyright = "© 2026 Openfy"
             vendor = "Openfy"
 
@@ -147,6 +157,12 @@ compose.desktop {
                 upgradeUuid = "6f4a3c2b-1a9e-4d8c-bf5e-8e7c6d5b4a3a"
                 shortcut = true
                 menu = true
+            }
+
+            macOS {
+                bundleID = "com.openfy.music"
+                dockName = "Openfy"
+                iconFile.set(project.file("src/desktopMain/resources/icon.icns"))
             }
         }
     }
