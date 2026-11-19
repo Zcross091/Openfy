@@ -13,11 +13,12 @@ enum class AudioQuality(val title: String, val description: String, val targetIt
 }
 
 enum class StreamingClient(val title: String, val description: String, val clientKey: String) {
-    AUTO("Auto", "Automatically selects best client per track", "AUTO"),
-    ANDROID("Android Music", "Standard InnerTube Android Music client", "ANDROID_MUSIC"),
-    IOS("iOS Music", "Native iOS InnerTube client (AAC itag 140)", "IOS_MUSIC"),
-    TV("TV HTML5 Simply", "Lightweight TV client bypass (Cobalt)", "TVHTML5_SIMPLY"),
-    WEB("Web Remix", "YouTube Music desktop web client", "WEB_REMIX")
+    AUTO("Auto Fallback (RVX)", "Automatically tries Android VR, iOS, visionOS & NewPipe", "AUTO"),
+    ANDROID_VR("Android VR (RVX Default)", "Primary ReVanced VR client (Unthrottled, no cipher)", "ANDROID_VR"),
+    IOS("iOS Direct", "Apple iOS Client (Unrestricted direct AAC)", "IOS"),
+    VISIONOS("Apple visionOS", "Apple visionOS Cobalt Client", "VISIONOS"),
+    NEWPIPE("NewPipe Extractor", "On-device signature deobfuscation engine", "NEWPIPE"),
+    TV("TV Simply (Cobalt)", "Smart TV Leanback client fallback", "TVHTML5")
 }
 
 object SettingsManager {

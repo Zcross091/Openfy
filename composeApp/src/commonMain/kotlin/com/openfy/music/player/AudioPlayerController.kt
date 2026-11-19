@@ -1,5 +1,6 @@
 package com.openfy.music.player
 
+import com.openfy.music.data.StreamingClient
 import com.openfy.music.data.model.Track
 import com.openfy.music.data.remote.YouTubeAudioResolver
 import kotlinx.coroutines.CoroutineScope
@@ -80,6 +81,14 @@ object PlaybackManager : AudioPlayerController {
     private val _playbackState = MutableStateFlow(PlaybackState())
     override val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
 
+    private val failedClientsForCurrentTrack = mutableSetOf<StreamingClient>()
+
+    private val _currentStreamingClient = MutableStateFlow<StreamingClient>(StreamingClient.AUTO)
+    val currentStreamingClient: StateFlow<StreamingClient> = _currentStreamingClient.asStateFlow()
+
+    private val _engineStatus = MutableStateFlow<String?>("RVX Audio Engine")
+    val engineStatus: StateFlow<String?> = _engineStatus.asStateFlow()
+
     fun setNativePlayer(player: NativeAudioPlayer) {
         this.nativePlayer = player
     }
@@ -107,6 +116,62 @@ object PlaybackManager : AudioPlayerController {
         handleTrackEnded()
     }
 
+    fun onPlaybackError() {
+        _currentTrack.value?.let { track ->
+            val key = track.youtubeId ?: track.id
+            YouTubeAudioResolver.invalidateCache(key)
+            val current = _currentStreamingClient.value
+            failedClientsForCurrentTrack.add(current)
+            if (failedClientsForCurrentTrack.size < 5) {
+                _engineStatus.value = "Error on ${current.title}, failing over..."
+                playWithFallback(track)
+            } else {
+                _isLoading.value = false
+                _isPlaying.value = false
+                _engineStatus.value = "Playback error"
+                syncState()
+            }
+        }
+    }
+
+    private fun playWithFallback(track: Track) {
+        _isLoading.value = true
+        syncState()
+        scope.launch(Dispatchers.IO) {
+            try {
+                val resolved = YouTubeAudioResolver.resolveStream(
+                    track = track,
+                    failedClients = failedClientsForCurrentTrack
+                )
+                if (resolved != null) {
+                    _currentStreamingClient.value = resolved.client
+                    _engineStatus.value = "Active: ${resolved.client.title}"
+                    nativePlayer?.playStream(resolved.url, track)
+                    _isLoading.value = false
+                    _isPlaying.value = true
+                    startProgressTicker()
+                } else {
+                    _isLoading.value = false
+                    _isPlaying.value = false
+                    _engineStatus.value = "All audio sources exhausted"
+                }
+            } catch (_: Exception) {
+                _isLoading.value = false
+            }
+            syncState()
+        }
+    }
+
+    fun switchSource() {
+        val track = _currentTrack.value ?: return
+        val current = _currentStreamingClient.value
+        failedClientsForCurrentTrack.add(current)
+        if (failedClientsForCurrentTrack.size >= 5) {
+            failedClientsForCurrentTrack.clear()
+        }
+        playWithFallback(track)
+    }
+
     private fun syncState() {
         _playbackState.value = PlaybackState(
             currentTrack = _currentTrack.value,
@@ -130,6 +195,7 @@ object PlaybackManager : AudioPlayerController {
         _isLoading.value = true
         _currentPositionMs.value = 0L
         _durationMs.value = (track.durationSeconds * 1000L).coerceAtLeast(0L)
+        failedClientsForCurrentTrack.clear()
 
         if (newQueue != null) {
             _queue.value = newQueue
@@ -142,19 +208,26 @@ object PlaybackManager : AudioPlayerController {
 
         scope.launch(Dispatchers.IO) {
             try {
-                val streamUrl = if (track.id.startsWith("LOCAL:")) {
-                    track.id.removePrefix("LOCAL:")
-                } else {
-                    YouTubeAudioResolver.resolveStreamUrl(track)
-                }
-
-                if (streamUrl != null) {
-                    nativePlayer?.playStream(streamUrl, track)
+                if (track.id.startsWith("LOCAL:")) {
+                    nativePlayer?.playStream(track.id.removePrefix("LOCAL:"), track)
+                    _currentStreamingClient.value = StreamingClient.AUTO
+                    _engineStatus.value = "Local Storage"
                     _isLoading.value = false
                     _isPlaying.value = true
                     startProgressTicker()
                 } else {
-                    _isLoading.value = false
+                    val resolved = YouTubeAudioResolver.resolveStream(track)
+                    if (resolved != null) {
+                        _currentStreamingClient.value = resolved.client
+                        _engineStatus.value = "Active: ${resolved.client.title}"
+                        nativePlayer?.playStream(resolved.url, track)
+                        _isLoading.value = false
+                        _isPlaying.value = true
+                        startProgressTicker()
+                    } else {
+                        _isLoading.value = false
+                        _engineStatus.value = "Stream unavailable"
+                    }
                 }
             } catch (e: Exception) {
                 _isLoading.value = false

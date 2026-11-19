@@ -55,6 +55,8 @@ fun NowPlayingSheet(
     val isShuffle by PlaybackManager.isShuffle.collectAsState()
     val repeatMode by PlaybackManager.repeatMode.collectAsState()
     val activeProvider by AccountManager.activeProvider.collectAsState()
+    val currentStreamingClient by PlaybackManager.currentStreamingClient.collectAsState()
+    val engineStatus by PlaybackManager.engineStatus.collectAsState()
 
     val scope = rememberCoroutineScope()
     var showAddToPlaylistSheet by remember { mutableStateOf(false) }
@@ -367,12 +369,30 @@ fun NowPlayingSheet(
                             )
                         }
 
-                        Text(
-                            text = "RVX Opus 160k",
-                            color = SpotifyGreen,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Surface(
+                            onClick = { PlaybackManager.switchSource() },
+                            color = Color(0xFF282828),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Switch Source",
+                                    tint = SpotifyGreen,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = currentStreamingClient.title,
+                                    color = SpotifyGreen,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }

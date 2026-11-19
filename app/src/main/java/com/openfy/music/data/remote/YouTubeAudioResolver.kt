@@ -7,6 +7,7 @@ import com.openfy.music.OpenfyApplication
 import com.openfy.music.data.AccountManager
 import com.openfy.music.data.AudioQuality
 import com.openfy.music.data.SettingsManager
+import com.openfy.music.data.StreamingClient
 import com.openfy.music.data.model.Album
 import com.openfy.music.data.model.Artist
 import com.openfy.music.data.model.Playlist
@@ -21,16 +22,28 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
 
+data class ResolvedStream(
+    val url: String,
+    val client: StreamingClient,
+    val userAgent: String
+)
+
 object YouTubeAudioResolver {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
+    private val fastCheckClient = client.newBuilder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(3, TimeUnit.SECONDS)
+        .build()
+
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private val streamCache = mutableMapOf<String, String>()
+    private val streamClientCache = mutableMapOf<String, StreamingClient>()
 
     private var cachedVisitorData: String? = null
     private var visitorDataExpiryMs: Long = 0L
@@ -205,6 +218,7 @@ object YouTubeAudioResolver {
 
     fun invalidateCache(trackId: String) {
         streamCache.remove(trackId)
+        streamClientCache.remove(trackId)
     }
 
     fun isStreamUrlValid(url: String): Boolean {
@@ -217,21 +231,53 @@ object YouTubeAudioResolver {
         return true
     }
 
+    fun getClientUserAgent(client: StreamingClient): String {
+        return when (client) {
+            StreamingClient.IOS -> "com.google.ios.youtube/20.10.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)"
+            StreamingClient.ANDROID_VR -> "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
+            StreamingClient.VISIONOS -> "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+            StreamingClient.TV -> "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/23.lts.3.306811-gold (unlike Gecko) v8/8.8.278.8-jit gles Starfish/2.0.3 (firmware; model)"
+            else -> "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+        }
+    }
+
+    fun isStreamPlayable(url: String, userAgent: String? = null): Boolean {
+        return try {
+            val reqBuilder = Request.Builder()
+                .url(url)
+                .header("Range", "bytes=0-1")
+            if (!userAgent.isNullOrEmpty()) {
+                reqBuilder.header("User-Agent", userAgent)
+            }
+            val resp = fastCheckClient.newCall(reqBuilder.build()).execute()
+            resp.use {
+                it.code in 200..206
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     /**
-     * Resolves the full-length audio stream for a track using a robust 5-tier fallback chain:
-     * Tier 1: ANDROID_MUSIC (Client 21) - Authenticated YouTube Music library integration
-     * Tier 2: IOS (Client 5, v20.10.1) - Primary unthrottled unciphered direct stream extractor
-     * Tier 3: WEB_REMIX (Client 67) - Official Web Player with dynamic SignatureTimestamp (STS)
-     * Tier 4: TVHTML5 (Client 85) - Cobalt Smart TV client
-     * Tier 5: Piped Fallback - Distributed privacy-respecting YouTube API stream endpoints
+     * Resolves the best playable audio stream for a track with dynamic RVX fallback:
+     * Attempts preferred client -> automatically switches to fallbacks (iOS, Android VR, visionOS, NewPipe, TV, Piped)
+     * if the stream fails or returns 403.
      */
-    suspend fun resolveStreamUrl(track: Track): String? = withContext(Dispatchers.IO) {
+    suspend fun resolveStream(
+        track: Track,
+        preferredClient: StreamingClient = SettingsManager.streamingClient.value,
+        failedClients: Set<StreamingClient> = emptySet()
+    ): ResolvedStream? = withContext(Dispatchers.IO) {
         val cacheKey = track.youtubeId ?: track.id
-        streamCache[cacheKey]?.let { cachedUrl ->
-            if (isStreamUrlValid(cachedUrl)) {
-                return@withContext cachedUrl
-            } else {
-                streamCache.remove(cacheKey)
+        if (failedClients.isEmpty()) {
+            streamCache[cacheKey]?.let { cachedUrl ->
+                if (isStreamUrlValid(cachedUrl)) {
+                    val client = streamClientCache[cacheKey] ?: StreamingClient.IOS
+                    return@withContext ResolvedStream(cachedUrl, client, getClientUserAgent(client))
+                } else {
+                    streamCache.remove(cacheKey)
+                    streamClientCache.remove(cacheKey)
+                }
             }
         }
 
@@ -249,41 +295,75 @@ object YouTubeAudioResolver {
 
         val quality = SettingsManager.audioQuality.value
 
-        // Tier 1: IOS (Client 5, v20.10.1) - Primary unthrottled unciphered direct stream extractor (AAC itag 140)
-        var streamUrl = fetchIosStreamUrl(videoId, quality)
-
-        // Tier 2: Battle-tested NewPipeExtractor (Deobfuscates YouTube signatures & avoids 403 chunk drops)
-        if (streamUrl == null) {
-            streamUrl = withContext(Dispatchers.IO) { fetchNewPipeStreamUrl(videoId, quality) }
+        // Assemble prioritized client fallback chain
+        val fallbackOrder = mutableListOf<StreamingClient>()
+        if (preferredClient != StreamingClient.AUTO && !failedClients.contains(preferredClient)) {
+            fallbackOrder.add(preferredClient)
         }
 
-        // Tier 3: WEB_REMIX (Client 67)
-        if (streamUrl == null) {
-            val visitorData = getOrFetchVisitorData()
-            streamUrl = fetchWebRemixStreamUrl(videoId, visitorData, quality)
+        val defaultChain = listOf(
+            StreamingClient.IOS,         // Fast, unciphered, bypasses music login requirements
+            StreamingClient.ANDROID_VR,  // RVX #1 Spoof Client (Meta Quest VR, no signature cipher)
+            StreamingClient.VISIONOS,    // Apple visionOS client
+            StreamingClient.NEWPIPE,     // Local on-device NewPipe deobfuscation
+            StreamingClient.TV           // TV Cobalt fallback
+        )
+
+        for (c in defaultChain) {
+            if (!fallbackOrder.contains(c) && !failedClients.contains(c)) {
+                fallbackOrder.add(c)
+            }
         }
 
-        // Tier 4: ANDROID_MUSIC (Client 21)
-        if (streamUrl == null) {
-            streamUrl = fetchAndroidMusicStreamUrl(videoId, quality)
+        // Pass 1: Try candidate clients and pre-verify range stream viability
+        for (client in fallbackOrder) {
+            val candidateUrl = when (client) {
+                StreamingClient.IOS -> fetchIosStreamUrl(videoId, quality)
+                StreamingClient.ANDROID_VR -> fetchAndroidVrStreamUrl(videoId, quality)
+                StreamingClient.VISIONOS -> fetchVisionOsStreamUrl(videoId, quality)
+                StreamingClient.NEWPIPE -> fetchNewPipeStreamUrl(videoId, quality)
+                StreamingClient.TV -> fetchTvHtml5StreamUrl(videoId, quality)
+                else -> null
+            }
+
+            if (!candidateUrl.isNullOrEmpty()) {
+                val ua = getClientUserAgent(client)
+                if (isStreamPlayable(candidateUrl, ua)) {
+                    streamCache[cacheKey] = candidateUrl
+                    streamClientCache[cacheKey] = client
+                    return@withContext ResolvedStream(candidateUrl, client, ua)
+                }
+            }
         }
 
-        // Tier 5: TVHTML5 (Client 85)
-        if (streamUrl == null) {
-            streamUrl = fetchTvHtml5StreamUrl(videoId, quality)
+        // Pass 2: If fast pre-check was blocked by CDN or timed out, attempt raw stream URLs
+        for (client in fallbackOrder) {
+            val candidateUrl = when (client) {
+                StreamingClient.IOS -> fetchIosStreamUrl(videoId, quality)
+                StreamingClient.ANDROID_VR -> fetchAndroidVrStreamUrl(videoId, quality)
+                StreamingClient.VISIONOS -> fetchVisionOsStreamUrl(videoId, quality)
+                StreamingClient.NEWPIPE -> fetchNewPipeStreamUrl(videoId, quality)
+                else -> null
+            }
+            if (!candidateUrl.isNullOrEmpty()) {
+                val ua = getClientUserAgent(client)
+                streamCache[cacheKey] = candidateUrl
+                streamClientCache[cacheKey] = client
+                return@withContext ResolvedStream(candidateUrl, client, ua)
+            }
         }
 
-        // Tier 6: Piped fallback
-        if (streamUrl == null) {
-            streamUrl = fetchPipedStreamUrl(videoId, quality)
-        }
-
-        if (streamUrl != null) {
-            streamCache[cacheKey] = streamUrl
-            return@withContext streamUrl
+        // Pass 3: External Piped distributed instance fallback
+        val pipedUrl = fetchPipedStreamUrl(videoId, quality)
+        if (!pipedUrl.isNullOrEmpty()) {
+            return@withContext ResolvedStream(pipedUrl, StreamingClient.AUTO, "Mozilla/5.0")
         }
 
         null
+    }
+
+    suspend fun resolveStreamUrl(track: Track): String? {
+        return resolveStream(track)?.url
     }
 
     private suspend fun fetchAndroidMusicStreamUrl(
@@ -400,6 +480,127 @@ object YouTubeAudioResolver {
                         addProperty("userAgent", userAgent)
                         addProperty("osName", "iOS")
                         addProperty("osVersion", "17.5.1.21F90")
+                        addProperty("hl", "en")
+                        addProperty("gl", "US")
+                    }
+                    add("client", clientObj)
+                }
+                add("context", context)
+                addProperty("videoId", videoId)
+            }
+
+            val req = Request.Builder()
+                .url(playerUrl)
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", userAgent)
+                .header("X-YouTube-Client-Name", clientId)
+                .header("X-YouTube-Client-Version", clientVersion)
+                .build()
+
+            val response = client.newCall(req).execute()
+            if (response.isSuccessful) {
+                val body = response.body?.string() ?: ""
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val status = json.getAsJsonObject("playabilityStatus")?.get("status")?.asString
+                if (status == "OK") {
+                    val streamingData = json.getAsJsonObject("streamingData")
+                    if (streamingData != null && streamingData.has("adaptiveFormats")) {
+                        val formats = streamingData.getAsJsonArray("adaptiveFormats")
+                        return@withContext extractBestAudioFormat(formats, quality)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        null
+    }
+
+    private suspend fun fetchAndroidVrStreamUrl(
+        videoId: String,
+        quality: AudioQuality
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val cfg = getClientConfig("ANDROID_VR")
+            val clientName = cfg?.get("clientName")?.asString ?: "ANDROID_VR"
+            val clientVersion = cfg?.get("clientVersion")?.asString ?: "1.65.10"
+            val clientId = cfg?.get("clientId")?.asString ?: "28"
+            val userAgent = cfg?.get("userAgent")?.asString
+                ?: "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"
+
+            val playerUrl = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
+            val payload = JsonObject().apply {
+                val context = JsonObject().apply {
+                    val clientObj = JsonObject().apply {
+                        addProperty("clientName", clientName)
+                        addProperty("clientVersion", clientVersion)
+                        addProperty("deviceMake", "Oculus")
+                        addProperty("deviceModel", "Quest 3")
+                        addProperty("androidSdkVersion", 32)
+                        addProperty("osName", "Android")
+                        addProperty("osVersion", "12L")
+                        addProperty("userAgent", userAgent)
+                        addProperty("hl", "en")
+                        addProperty("gl", "US")
+                    }
+                    add("client", clientObj)
+                }
+                add("context", context)
+                addProperty("videoId", videoId)
+            }
+
+            val req = Request.Builder()
+                .url(playerUrl)
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .header("Content-Type", "application/json")
+                .header("User-Agent", userAgent)
+                .header("X-YouTube-Client-Name", clientId)
+                .header("X-YouTube-Client-Version", clientVersion)
+                .build()
+
+            val response = client.newCall(req).execute()
+            if (response.isSuccessful) {
+                val body = response.body?.string() ?: ""
+                val json = gson.fromJson(body, JsonObject::class.java)
+                val status = json.getAsJsonObject("playabilityStatus")?.get("status")?.asString
+                if (status == "OK") {
+                    val streamingData = json.getAsJsonObject("streamingData")
+                    if (streamingData != null && streamingData.has("adaptiveFormats")) {
+                        val formats = streamingData.getAsJsonArray("adaptiveFormats")
+                        return@withContext extractBestAudioFormat(formats, quality)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        null
+    }
+
+    private suspend fun fetchVisionOsStreamUrl(
+        videoId: String,
+        quality: AudioQuality
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val cfg = getClientConfig("VISIONOS")
+            val clientName = cfg?.get("clientName")?.asString ?: "VISIONOS"
+            val clientVersion = cfg?.get("clientVersion")?.asString ?: "0.1"
+            val clientId = cfg?.get("clientId")?.asString ?: "101"
+            val userAgent = cfg?.get("userAgent")?.asString
+                ?: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
+
+            val playerUrl = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
+            val payload = JsonObject().apply {
+                val context = JsonObject().apply {
+                    val clientObj = JsonObject().apply {
+                        addProperty("clientName", clientName)
+                        addProperty("clientVersion", clientVersion)
+                        addProperty("deviceMake", "Apple")
+                        addProperty("deviceModel", "RealityDevice14,1")
+                        addProperty("osName", "visionOS")
+                        addProperty("osVersion", "1.3.21O771")
+                        addProperty("userAgent", userAgent)
                         addProperty("hl", "en")
                         addProperty("gl", "US")
                     }

@@ -1,32 +1,30 @@
-### 🎵 Openfy v1.3.1 - Working Audio Playback Engine & ExoPlayer Service Lifecycle Fix
+### 🎵 Openfy v1.3.2 - RVX Dynamic Source Switching & Multi-Client Fallback Engine
 
 **Openfy** brings Spotify's mobile interface together with high-fidelity, ad-free background music streaming.
 
-This release fixes the core audio playback failure, resolving the Google Video CDN `403 Forbidden` stream issue and eliminating the ExoPlayer service initialization race condition.
+This release introduces full **RVX (ReVanced Extended) client fallback switching**, resolving playback stalls by automatically switching between streaming sources (`Android VR`, `iOS Direct`, `Apple visionOS`, `NewPipe Extractor`, and `TV Cobalt`).
 
 ---
 
-### 🚀 Key Improvements & Fixes in v1.3.1
+### 🚀 Key Improvements & Fixes in v1.3.2
 
-#### 1. 🎧 Unrestricted AAC Stream Selection (HTTP 206 Partial Content)
-* **Root Cause Fixed**: YouTube's Google Video CDN returns `HTTP 403 Forbidden` on HTTP Range requests for WebM/Opus streams (`itag 251`), which previously caused media players to freeze or crash on playback start.
-* **Direct AAC-LC 128 kbps (itag 140)**: Prioritized `itag 140` across all resolution tiers and default settings. Google Video CDN reliably serves standard `HTTP 206 Partial Content` on `itag 140`, ensuring instant playback with hardware acceleration on 100% of Android and iOS devices.
+#### 1. 🔄 RVX Dynamic Client Fallback & Automatic Source Switching
+* **Auto-Failover on Playback Error**: When ExoPlayer encounters a playback error (such as a 403 Forbidden or network CDN drop from YouTube), the app does not stop. It automatically marks the failing client and fails over to the next engine in the prioritized chain (`iOS Direct` -> `Android VR (Meta Quest)` -> `Apple visionOS` -> `NewPipe Extractor` -> `TV Cobalt`).
+* **Active Stream Pre-Validation**: Candidate streams are validated via ultra-fast 0-1 byte Range checks (200-206) before passing to ExoPlayer, preventing infinite buffering spinners on stale or blocked CDN links.
 
-#### 2. ⚡ Resolved ExoPlayer Initialization Race Condition
-* **Pending Track Queue**: Eliminated the silent playback drop when a song is tapped before `MusicService` finishes binding. `PlaybackManager` now queues the media item and starts playback immediately the instant `ExoPlayer` is ready.
-* **Accept-Encoding Identity**: Added `Accept-Encoding: identity` and clean HTTP data source headers to prevent chunked compression from disrupting ExoPlayer streaming.
+#### 2. 🥽 Added ReVanced Extended Default Client (Android VR)
+* **Android VR Client Spoofing**: Added `ANDROID_VR` (Meta Quest 3 / Client 28) to `clients.json` and stream resolvers. This is the #1 recommended client in RVX because it provides unthrottled, unciphered direct audio streams without complex JavaScript signature transforms or DRM requirements.
+* **Apple visionOS Client (Client 101)**: Integrated as an additional high-stability direct stream fallback.
 
-#### 3. 🛠️ Fixed NewPipeDownloader Request Body Bug
-* **POST/PUT Body Fix**: Fixed `NewPipeDownloader` throwing `IllegalArgumentException: method POST must have a request body` on empty payloads, restoring NewPipeExtractor's stream parsing capability.
-
-#### 4. 🍏 iOS AVPlayer Robustness
-* **URL Sanitization**: Added strict trimming and whitespace protection to audio URLs before loading into `AVPlayerItem`.
+#### 3. 🎛️ Interactive Source Switcher in Now Playing & Settings
+* **One-Tap Switch Engine**: Replaced the static badge in the Now Playing sheet with an interactive Source Badge. Tapping the badge instantly switches between available streaming engines on the fly.
+* **Wired Settings Preference**: Connected the **Streaming Client** setting in Settings to the resolver engine so users can lock their preferred default source.
 
 ---
 
 ### 🔒 Verification & Checksums
-* **Android APK**: `Openfy.apk` / `Openfy-v1.3.1.apk` (see `SHA256SUMS.txt`)
-* **iOS IPA**: `Openfy.ipa` / `Openfy-v1.3.1.ipa` (see `SHA256SUMS-ios.txt`)
+* **Android APK**: `Openfy.apk` / `Openfy-v1.3.2.apk` (see `SHA256SUMS.txt`)
+* **iOS IPA**: `Openfy.ipa` / `Openfy-v1.3.2.ipa` (see `SHA256SUMS-ios.txt`)
 
 #### 📥 Download:
 - **Android Users**: Download **`Openfy.apk`** below to install directly (in-place update supported).
