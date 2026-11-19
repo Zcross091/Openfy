@@ -95,7 +95,8 @@ jobs:
 
           # 4. Generate SHA256 checksums
           Set-Location release-artifacts-windows
-          Get-FileHash -Algorithm SHA256 * | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Out-File -FilePath SHA256SUMS-windows.txt -Encoding ascii
+          $hashes = Get-ChildItem -File | Where-Object { $_.Name -notlike "SHA256SUMS*" } | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" }
+          $hashes | Out-File -FilePath SHA256SUMS-windows.txt -Encoding ascii
           Get-Content SHA256SUMS-windows.txt
           Set-Location ..
 
