@@ -9,6 +9,7 @@ import com.openfy.music.platform.PlatformConfig
 import com.openfy.music.platform.PlatformType
 import com.openfy.music.player.DesktopAudioPlayer
 import com.openfy.music.player.DesktopSettings
+import com.openfy.music.player.PlaybackManager
 import java.awt.Dimension
 import java.awt.Toolkit
 
@@ -16,6 +17,7 @@ fun main() = application {
     PlatformConfig.platform = PlatformType.DESKTOP
     SettingsManager.initSettings(DesktopSettings())
     DesktopAudioPlayer.initialize()
+    PlaybackManager.restoreSession()
 
     val windowState = rememberWindowState(
         size = DpSize(1280.dp, 820.dp),

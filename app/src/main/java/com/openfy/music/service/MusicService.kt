@@ -14,9 +14,16 @@ import com.openfy.music.player.PlaybackManager
 
 class MusicService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
+    private var wifiLock: android.net.wifi.WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
+
+        try {
+            val wifiManager = applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            wifiLock = wifiManager?.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Openfy:MusicPlayback")
+            wifiLock?.setReferenceCounted(false)
+        } catch (_: Throwable) {}
 
         // 1. Configure robust streaming HTTP data source with clean range requests
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
@@ -60,6 +67,18 @@ class MusicService : MediaSessionService() {
             .setLoadControl(loadControl)
             .build()
 
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                try {
+                    if (isPlaying) {
+                        wifiLock?.acquire()
+                    } else {
+                        if (wifiLock?.isHeld == true) wifiLock?.release()
+                    }
+                } catch (_: Throwable) {}
+            }
+        })
+
         PlaybackManager.setPlayer(player)
 
         mediaSession = MediaSession.Builder(this, player).build()
@@ -70,6 +89,9 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        try {
+            if (wifiLock?.isHeld == true) wifiLock?.release()
+        } catch (_: Throwable) {}
         mediaSession?.run {
             player.release()
             release()

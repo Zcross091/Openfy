@@ -79,6 +79,8 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.okhttp)
                 implementation(libs.gson)
+                implementation(libs.jna)
+                implementation(libs.jna.platform)
 
                 // OpenJFX for desktop media streaming (Windows, macOS Intel & Apple Silicon)
                 implementation("org.openjfx:javafx-base:21.0.5")
@@ -114,8 +116,8 @@ android {
         applicationId = "com.openfy.music"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.3.4"
+        versionCode = 9
+        versionName = "1.3.5"
     }
 
     packaging {
@@ -148,7 +150,7 @@ compose.desktop {
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe
             )
             packageName = "Openfy"
-            packageVersion = "1.3.4"
+            packageVersion = "1.3.5"
             description = "Openfy - Spotify Desktop Client"
             copyright = "© 2026 Openfy"
             vendor = "Openfy"

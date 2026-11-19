@@ -338,9 +338,11 @@ object YouTubeAudioResolver {
 
         for (client in fallbackOrder) {
             val candidateUrl = when (client) {
+                StreamingClient.SAAVN -> fetchSaavnStreamUrl(track.title, track.artistNames, quality)
                 StreamingClient.IOS -> fetchIosStreamUrl(videoId, quality)
                 StreamingClient.ANDROID_VR -> fetchAndroidVrStreamUrl(videoId, quality)
                 StreamingClient.VISIONOS -> fetchVisionOsStreamUrl(videoId, quality)
+                StreamingClient.NEWPIPE -> fetchPipedStreamUrl(videoId, quality)
                 StreamingClient.TV -> fetchTvHtml5StreamUrl(videoId, quality)
                 else -> null
             }
@@ -358,6 +360,69 @@ object YouTubeAudioResolver {
         }
 
         null
+    }
+
+    /**
+     * Resolves high-fidelity, unthrottled 320kbps / 160kbps AAC audio streams directly
+     * from JioSaavn CDN with full HTTP Range support (no 1MB cutoffs, no speed throttling).
+     */
+    suspend fun fetchSaavnStreamUrl(
+        title: String,
+        artist: String,
+        quality: AudioQuality = AudioQuality.AUTO
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val cleanTitle = title.replace(Regex("\\(.*\\)|\\[.*\\]|feat\\..*|ft\\..*", RegexOption.IGNORE_CASE), "").trim()
+            val cleanArtist = artist.split(",", ";", "&", "feat.", "ft.").firstOrNull()?.trim() ?: artist
+            val searchQueries = listOf(
+                "$cleanTitle $cleanArtist",
+                "$title $artist",
+                cleanTitle
+            )
+
+            var songId: String? = null
+            for (q in searchQueries) {
+                if (q.isBlank()) continue
+                val encodedQ = q.encodeURLParameter()
+                val searchUrl = "https://www.jiosaavn.com/api.php?__call=autocomplete.get&query=$encodedQ&_format=json&_marker=0&ctx=android"
+                val resp = NetworkClient.client.get(searchUrl) {
+                    header("User-Agent", "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36")
+                }
+                val body = resp.bodyAsText()
+                if (body.contains("\"songs\"")) {
+                    val json = NetworkClient.json.parseToJsonElement(body).jsonObject
+                    val songs = json["songs"]?.jsonObject?.get("data")?.jsonArray
+                    if (songs != null && songs.isNotEmpty()) {
+                        val first = songs[0].jsonObject
+                        songId = first["id"]?.jsonPrimitive?.contentOrNull
+                        if (!songId.isNullOrEmpty()) break
+                    }
+                }
+            }
+
+            if (songId.isNullOrEmpty()) return@withContext null
+
+            val detailUrl = "https://www.jiosaavn.com/api.php?__call=song.getDetails&pids=$songId&_format=json&_marker=0&ctx=android"
+            val detailResp = NetworkClient.client.get(detailUrl) {
+                header("User-Agent", "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36")
+            }
+            val detailBody = detailResp.bodyAsText()
+            val detailJson = NetworkClient.json.parseToJsonElement(detailBody).jsonObject
+            val songObj = detailJson[songId]?.jsonObject ?: return@withContext null
+            val encryptedUrl = songObj["encrypted_media_url"]?.jsonPrimitive?.contentOrNull ?: return@withContext null
+
+            val decrypted = decryptSaavnUrl(encryptedUrl) ?: return@withContext null
+
+            val targetUrl = when (quality) {
+                AudioQuality.DATA_SAVER -> decrypted.replace("_96.mp4", "_96.mp4")
+                AudioQuality.NORMAL -> decrypted.replace("_96.mp4", "_160.mp4")
+                else -> decrypted.replace("_96.mp4", "_320.mp4")
+            }
+
+            targetUrl
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     suspend fun resolveStreamUrl(track: Track): String? {

@@ -1,50 +1,38 @@
-### 🎵 Openfy v1.3.4 - Spotify Desktop Edition (Windows & macOS) & Multi-Platform Release
+### 🎵 Openfy v1.3.5 - Screen-Off Play, Auto-Fallbacks, Session Persistence & Connection Keep-Alive
 
-**Openfy** brings the iconic Spotify desktop experience together with high-fidelity, ad-free background music streaming and unthrottled audio resolvers.
-
-This release introduces the official **Windows & macOS Desktop Editions** featuring the full **Spotify Desktop UI** alongside Android and iOS cross-platform support.
+**Openfy v1.3.5** delivers essential stability, power management, and playback persistence improvements across Windows, macOS, Android, and iOS.
 
 ---
 
-### 🚀 Key Features & Highlights in v1.3.4
+### 🚀 Key Improvements in v1.3.5
 
-#### 1. 🖥️ Official Spotify Desktop Client (macOS & Windows)
-* **Identical Spotify Desktop UI**: Authentic 3-panel Spotify desktop layout:
-  - **Left Sidebar**: Home, Search pills, and Your Library with pinned Liked Songs and personal playlists.
-  - **Center Stage**: Detailed Spotify track table with `#`, `Title`, `Album`, `Date Added`, and `Duration` columns, 56dp Spotify-green play button, and interactive hover states.
-  - **Right Collapsible Drawer**: Now Playing view and synchronized karaoke lyrics.
-  - **Bottom Player Bar**: Full-width persistent player bar with track scrubber, volume slider, mute toggle, and interactive audio engine switcher.
-* **Apple Silicon (M1/M2/M3/M4) & Intel macOS Support**: Universal macOS `.app` bundle, `.dmg` disk image, and `.pkg` installer with ad-hoc code signature for Gatekeeper.
-* **Native Desktop Persistence**: Uses system preferences (`~/Library/Preferences/` on macOS and Windows Registry on Windows) for instantaneous load times and zero-configuration settings persistence.
-* **Native Audio Pipeline**: Direct streaming audio engine supporting HTTP/HTTPS streaming with hardware-accelerated audio decoding.
+#### 1. 🌙 Screen-Off Play & Background Power Management
+* **Windows Modern Standby & Lock Screen Support**: Integrates Win32 `SetThreadExecutionState` (`ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED`). Windows will no longer suspend audio streaming or drop network connections when your display turns off, screen locks, or laptop lid closes.
+* **macOS Sleep Prevention**: Integrates power assertion management via `caffeinate` to prevent system and network sleep while music is playing.
+* **Android High-Performance Wi-Fi Lock**: Acquires `WIFI_MODE_FULL_HIGH_PERF` alongside network `WakeLock` to prevent Android Doze mode from throttling streaming packets when the screen is off.
 
-#### 2. ⚡ Unthrottled 320kbps CD-Quality Audio Fallback Engines
-* **JioSaavn HQ (320k)**: Direct 320kbps CD-quality AAC streams with full HTTP Range seek support from start to finish (100% complete playback, no 1MB cutoffs or YouTube speed throttles).
-* **Multi-Engine Fallback Cascade**: Seamlessly falls over between `JioSaavn HQ` ➔ `iOS Direct` ➔ `Android VR` ➔ `Apple visionOS` ➔ `NewPipe Extractor` ➔ `TV Cobalt`.
-* **Interactive Engine Switcher**: Tap the engine badge in the player bar or use Settings to switch resolvers anytime with exact timestamp preservation.
+#### 2. ⚡ Intelligent Stall Detection Watchdog & Seamless Auto-Fallback
+* **Active Freeze Watchdog**: Continuously monitors the audio decoders. If an audio stream freezes or buffers for >4 seconds due to network throttling, the watchdog automatically recovers by switching to the next resolver in the cascade.
+* **Exact Timestamp Preservation**: Auto-fallback and manual engine switching now resume from the **exact millisecond** where playback was interrupted, eliminating restarts from the beginning.
+* **Fixed Playback Cutoffs**: Removed phantom synthetic progress timers that could cause premature track skips when streaming jitter occurred.
 
-#### 3. 🛡️ Intelligent Stall Detection Watchdog
-* **Auto-Recovers Stalled Streams**: If playback ever stalls buffering for >4 seconds due to network throttling, the watchdog auto-recovers to the next resolver instantly.
+#### 3. 💾 Full Playback Session Persistence & Instant Resume
+* **Automatic State Saving**: The app continuously saves your active track, millisecond position, up to 50 queue items, volume level, shuffle state, repeat mode, and preferred resolver to disk.
+* **Instant Startup Resume**: On app launch (Windows, macOS, Android), your previous listening session is immediately ready on screen so you can resume listening with a single tap or spacebar press.
 
-#### 4. 🎤 Synchronized Real-Time Karaoke Lyrics
-* Real-time synchronized lyrics with animated syllable tracking and one-tap jump-to-timestamp seeking.
+#### 4. 🌐 Connection Keep-Alive & Robust HTTP Streaming
+* **Persistent Connection Pooling**: Configured HTTP keep-alive (`Connection: keep-alive`, `Keep-Alive: timeout=60, max=100`) and pooled connections to CDNs.
+* **Exponential Backoff Retry**: Automatic request retries on socket resets or transient network drops.
+* **JioSaavn HQ 320k Integration**: Tier 1 unthrottled CD-quality direct AAC streams now available natively across all desktop and mobile platforms with on-device decryption.
 
 ---
 
 ### 🔒 Verification & Checksums
-* **macOS DMG Installer**: `Openfy.dmg` / `Openfy-v1.3.4.dmg` (see `SHA256SUMS-macos.txt`)
-* **macOS PKG Installer**: `Openfy.pkg` / `Openfy-v1.3.4.pkg`
-* **macOS Portable ZIP**: `Openfy-macos.zip` / `Openfy-v1.3.4-macos.zip`
-* **Windows Portable ZIP**: `Openfy-windows-x64.zip` / `Openfy-v1.3.4-windows-x64.zip` (see `SHA256SUMS-windows.txt`)
-* **Windows MSI Installer**: `Openfy.msi` / `Openfy-v1.3.4.msi`
-* **Windows EXE Installer**: `Openfy-Setup.exe` / `Openfy-v1.3.4-Setup.exe`
-* **Android APK**: `Openfy.apk` / `Openfy-v1.3.4.apk` (see `SHA256SUMS.txt`)
-* **iOS IPA**: `Openfy.ipa` / `Openfy-v1.3.4.ipa` (see `SHA256SUMS-ios.txt`)
-
-#### 📥 Download:
-- **Mac Users (DMG)**: Download **`Openfy.dmg`** below, double-click to open, and drag Openfy into your Applications folder.
-- **Mac Users (Portable)**: Download **`Openfy-macos.zip`** below and extract `Openfy.app`.
-- **Windows Users (Portable)**: Download **`Openfy-windows-x64.zip`** below, extract, and double-click `Openfy.exe`.
-- **Windows Users (Installer)**: Download **`Openfy.msi`** or **`Openfy-Setup.exe`** below to install Openfy into your Windows Start Menu.
-- **Android Users**: Download **`Openfy.apk`** below to install directly (in-place update supported).
-- **iOS Users**: Download **`Openfy.ipa`** below to sideload via AltStore / SideStore / TrollStore.
+* **Windows Setup Installer**: `Openfy-Setup.exe` (see `SHA256SUMS-windows.txt`)
+* **Windows MSI Installer**: `Openfy.msi`
+* **Windows Portable ZIP**: `Openfy-windows-x64.zip`
+* **macOS DMG Installer**: `Openfy.dmg` (see `SHA256SUMS-macos.txt`)
+* **macOS PKG Installer**: `Openfy.pkg`
+* **macOS Portable ZIP**: `Openfy-macos.zip`
+* **Android APK**: `Openfy.apk` (see `SHA256SUMS.txt`)
+* **iOS IPA**: `Openfy.ipa` (see `SHA256SUMS-ios.txt`)

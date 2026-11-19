@@ -1,7 +1,10 @@
 package com.openfy.music.data
 
+import com.openfy.music.data.model.Track
+import com.openfy.music.data.remote.NetworkClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.builtins.ListSerializer
 
 interface Settings {
     fun getStringOrNull(key: String): String?
@@ -170,4 +173,75 @@ object SettingsManager {
         }
         _enableLocalMusic.value = enable
     }
+
+    fun savePlaybackSession(
+        track: Track?,
+        positionMs: Long,
+        queue: List<Track>,
+        volume: Float,
+        isShuffle: Boolean,
+        repeatMode: Int,
+        streamingClient: StreamingClient
+    ) {
+        try {
+            if (track != null) {
+                val trackJson = NetworkClient.json.encodeToString(Track.serializer(), track)
+                settings.putString("session_last_track", trackJson)
+            } else {
+                settings.remove("session_last_track")
+            }
+            settings.putLong("session_last_position", positionMs)
+            if (queue.isNotEmpty()) {
+                val queueJson = NetworkClient.json.encodeToString(
+                    ListSerializer(Track.serializer()),
+                    queue.take(50)
+                )
+                settings.putString("session_last_queue", queueJson)
+            }
+            settings.putString("session_volume", volume.toString())
+            settings.putBoolean("session_shuffle", isShuffle)
+            settings.putLong("session_repeat", repeatMode.toLong())
+            settings.putString("session_streaming_client", streamingClient.name)
+        } catch (_: Exception) {}
+    }
+
+    fun loadSavedSession(): PlaybackSessionState {
+        val track = try {
+            val json = settings.getStringOrNull("session_last_track")
+            if (!json.isNullOrEmpty()) NetworkClient.json.decodeFromString(Track.serializer(), json) else null
+        } catch (_: Exception) { null }
+
+        val positionMs = settings.getLong("session_last_position", 0L)
+
+        val queue = try {
+            val json = settings.getStringOrNull("session_last_queue")
+            if (!json.isNullOrEmpty()) NetworkClient.json.decodeFromString(
+                ListSerializer(Track.serializer()),
+                json
+            ) else emptyList()
+        } catch (_: Exception) { emptyList() }
+
+        val volume = try {
+            settings.getString("session_volume", "1.0").toFloatOrNull() ?: 1.0f
+        } catch (_: Exception) { 1.0f }
+
+        val shuffle = settings.getBoolean("session_shuffle", false)
+        val repeat = settings.getLong("session_repeat", 0L).toInt()
+        val client = try {
+            val clientName = settings.getString("session_streaming_client", StreamingClient.AUTO.name)
+            StreamingClient.valueOf(clientName)
+        } catch (_: Exception) { StreamingClient.AUTO }
+
+        return PlaybackSessionState(track, positionMs, queue, volume, shuffle, repeat, client)
+    }
 }
+
+data class PlaybackSessionState(
+    val track: Track?,
+    val positionMs: Long,
+    val queue: List<Track>,
+    val volume: Float,
+    val isShuffle: Boolean,
+    val repeatMode: Int,
+    val streamingClient: StreamingClient
+)

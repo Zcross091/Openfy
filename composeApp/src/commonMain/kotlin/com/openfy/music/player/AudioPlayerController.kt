@@ -1,5 +1,6 @@
 package com.openfy.music.player
 
+import com.openfy.music.data.SettingsManager
 import com.openfy.music.data.StreamingClient
 import com.openfy.music.data.model.Track
 import com.openfy.music.data.remote.YouTubeAudioResolver
@@ -93,14 +94,53 @@ object PlaybackManager : AudioPlayerController {
     private val _volume = MutableStateFlow(1.0f)
     val volume: StateFlow<Float> = _volume.asStateFlow()
 
+    private var lastPersistTimeMs = 0L
+
+    fun restoreSession() {
+        try {
+            val session = SettingsManager.loadSavedSession()
+            if (session.track != null) {
+                _currentTrack.value = session.track
+                _currentPositionMs.value = session.positionMs
+                _durationMs.value = (session.track.durationSeconds * 1000L).coerceAtLeast(0L)
+                _queue.value = session.queue
+                currentIndex = session.queue.indexOfFirst { it.id == session.track.id }.coerceAtLeast(0)
+                _volume.value = session.volume
+                nativePlayer?.setVolume(session.volume)
+                _isShuffle.value = session.isShuffle
+                _repeatMode.value = session.repeatMode
+                _currentStreamingClient.value = session.streamingClient
+                _engineStatus.value = "Ready: ${session.streamingClient.title}"
+                syncState()
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun persistSession(force: Boolean = false) {
+        val now = io.ktor.util.date.getTimeMillis()
+        if (!force && now - lastPersistTimeMs < 4000L) return
+        lastPersistTimeMs = now
+        SettingsManager.savePlaybackSession(
+            track = _currentTrack.value,
+            positionMs = _currentPositionMs.value,
+            queue = _queue.value,
+            volume = _volume.value,
+            isShuffle = _isShuffle.value,
+            repeatMode = _repeatMode.value,
+            streamingClient = _currentStreamingClient.value
+        )
+    }
+
     fun setVolume(volumeFraction: Float) {
         val clamped = volumeFraction.coerceIn(0f, 1f)
         _volume.value = clamped
         nativePlayer?.setVolume(clamped)
+        persistSession(force = true)
     }
 
     fun setNativePlayer(player: NativeAudioPlayer) {
         this.nativePlayer = player
+        player.setVolume(_volume.value)
     }
 
     fun setController(controller: AudioPlayerController) {
@@ -113,6 +153,7 @@ object PlaybackManager : AudioPlayerController {
             _durationMs.value = durationMs
         }
         syncState()
+        persistSession(force = false)
     }
 
     fun updatePlaybackState(isPlaying: Boolean, isLoading: Boolean = false) {
@@ -120,21 +161,41 @@ object PlaybackManager : AudioPlayerController {
         _isLoading.value = isLoading
         if (isPlaying) startProgressTicker() else stopProgressTicker()
         syncState()
+        persistSession(force = true)
     }
 
     fun onTrackEnded() {
         handleTrackEnded()
     }
 
+    fun onPlaybackStalled() {
+        _currentTrack.value?.let { track ->
+            val lastPos = _currentPositionMs.value
+            val key = track.youtubeId ?: track.id
+            YouTubeAudioResolver.invalidateCache(key)
+            val current = _currentStreamingClient.value
+            failedClientsForCurrentTrack.add(current)
+            if (failedClientsForCurrentTrack.size < 6) {
+                _engineStatus.value = "Stalled on ${current.title}, auto-recovering..."
+                playWithFallback(track, resumePositionMs = lastPos)
+            } else {
+                failedClientsForCurrentTrack.clear()
+                _engineStatus.value = "Reconnecting audio stream..."
+                playWithFallback(track, resumePositionMs = lastPos)
+            }
+        }
+    }
+
     fun onPlaybackError() {
         _currentTrack.value?.let { track ->
+            val lastPos = _currentPositionMs.value
             val key = track.youtubeId ?: track.id
             YouTubeAudioResolver.invalidateCache(key)
             val current = _currentStreamingClient.value
             failedClientsForCurrentTrack.add(current)
             if (failedClientsForCurrentTrack.size < 6) {
                 _engineStatus.value = "Error on ${current.title}, failing over..."
-                playWithFallback(track)
+                playWithFallback(track, resumePositionMs = lastPos)
             } else {
                 _isLoading.value = false
                 _isPlaying.value = false
@@ -144,7 +205,7 @@ object PlaybackManager : AudioPlayerController {
         }
     }
 
-    private fun playWithFallback(track: Track) {
+    private fun playWithFallback(track: Track, resumePositionMs: Long = _currentPositionMs.value) {
         _isLoading.value = true
         syncState()
         scope.launch(Dispatchers.IO) {
@@ -157,6 +218,10 @@ object PlaybackManager : AudioPlayerController {
                     _currentStreamingClient.value = resolved.client
                     _engineStatus.value = "Active: ${resolved.client.title}"
                     nativePlayer?.playStream(resolved.url, track)
+                    if (resumePositionMs > 1000L) {
+                        delay(500)
+                        nativePlayer?.seekTo(resumePositionMs)
+                    }
                     _isLoading.value = false
                     _isPlaying.value = true
                     startProgressTicker()
@@ -169,17 +234,19 @@ object PlaybackManager : AudioPlayerController {
                 _isLoading.value = false
             }
             syncState()
+            persistSession(force = true)
         }
     }
 
     fun switchSource() {
         val track = _currentTrack.value ?: return
         val current = _currentStreamingClient.value
+        val lastPos = _currentPositionMs.value
         failedClientsForCurrentTrack.add(current)
         if (failedClientsForCurrentTrack.size >= 6) {
             failedClientsForCurrentTrack.clear()
         }
-        playWithFallback(track)
+        playWithFallback(track, resumePositionMs = lastPos)
     }
 
     private fun syncState() {
@@ -215,6 +282,7 @@ object PlaybackManager : AudioPlayerController {
             currentIndex = _queue.value.lastIndex
         }
         syncState()
+        persistSession(force = true)
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -243,6 +311,7 @@ object PlaybackManager : AudioPlayerController {
                 _isLoading.value = false
             }
             syncState()
+            persistSession(force = true)
         }
     }
 
@@ -267,6 +336,7 @@ object PlaybackManager : AudioPlayerController {
         _isPlaying.value = false
         stopProgressTicker()
         syncState()
+        persistSession(force = true)
     }
 
     override fun resume() {
@@ -274,10 +344,13 @@ object PlaybackManager : AudioPlayerController {
             it.resume()
             return
         }
-        nativePlayer?.resume()
-        _isPlaying.value = true
-        startProgressTicker()
-        syncState()
+        if (_currentTrack.value != null) {
+            nativePlayer?.resume()
+            _isPlaying.value = true
+            startProgressTicker()
+            syncState()
+            persistSession(force = true)
+        }
     }
 
     override fun seekTo(positionMs: Long) {
@@ -288,6 +361,7 @@ object PlaybackManager : AudioPlayerController {
         nativePlayer?.seekTo(positionMs)
         _currentPositionMs.value = positionMs
         syncState()
+        persistSession(force = true)
     }
 
     override fun skipNext() {
@@ -344,6 +418,7 @@ object PlaybackManager : AudioPlayerController {
         }
         _isShuffle.value = !_isShuffle.value
         syncState()
+        persistSession(force = true)
     }
 
     override fun toggleRepeat() {
@@ -353,10 +428,14 @@ object PlaybackManager : AudioPlayerController {
         }
         _repeatMode.value = (_repeatMode.value + 1) % 3
         syncState()
+        persistSession(force = true)
     }
 
     private fun startProgressTicker() {
         progressJob?.cancel()
+        // If native player is driving progress, avoid running phantom synthetic ticker
+        if (nativePlayer != null) return
+
         progressJob = scope.launch {
             while (isActive) {
                 if (_isPlaying.value) {
