@@ -154,18 +154,18 @@ object AccountManager {
                 if (SpotifyClient.isConnected) {
                     SpotifyClient.getLikedTracks()
                 } else {
-                    YouTubeAudioResolver.getTrendingTracks()
+                    emptyList()
                 }
             }
             AccountProvider.YOUTUBE -> {
                 if (isYouTubeConnected && !youtubeCookie.isNullOrEmpty()) {
                     YouTubeAudioResolver.getLikedVideos()
                 } else {
-                    YouTubeAudioResolver.getTrendingTracks()
+                    emptyList()
                 }
             }
             AccountProvider.GUEST -> {
-                YouTubeAudioResolver.getTrendingTracks()
+                emptyList()
             }
         }
     }
@@ -175,17 +175,17 @@ object AccountManager {
             AccountProvider.SPOTIFY -> {
                 if (SpotifyClient.isConnected) {
                     SpotifyClient.getUserPlaylists()
-                } else YouTubeAudioResolver.getCuratedPlaylists()
+                } else emptyList()
             }
             AccountProvider.YOUTUBE -> {
                 if (isYouTubeConnected && !youtubeCookie.isNullOrEmpty()) {
                     YouTubeAudioResolver.getUserPlaylists()
                 } else {
-                    YouTubeAudioResolver.getCuratedPlaylists()
+                    emptyList()
                 }
             }
             AccountProvider.GUEST -> {
-                YouTubeAudioResolver.getCuratedPlaylists()
+                emptyList()
             }
         }
     }
@@ -193,7 +193,6 @@ object AccountManager {
     suspend fun toggleLike(track: Track): Boolean {
         val wasLiked = track.isLiked
         val newLiked = !wasLiked
-        track.isLiked = newLiked
 
         val provider = _activeProvider.value
         val success = when (provider) {
@@ -206,22 +205,34 @@ object AccountManager {
                 if (vid.length == 11 && !youtubeCookie.isNullOrEmpty()) {
                     YouTubeAudioResolver.rateSong(vid, newLiked)
                 } else {
-                    true
+                    false
                 }
             }
-            AccountProvider.GUEST -> true
+            AccountProvider.GUEST -> false
         }
 
-        val message = if (newLiked) {
-            when (provider) {
-                AccountProvider.SPOTIFY -> "Saved to Spotify Liked Songs!"
-                AccountProvider.YOUTUBE -> "Saved to YouTube Liked Music!"
-                AccountProvider.GUEST -> "Added to Liked Songs (Guest)"
+        if (success) {
+            track.isLiked = newLiked
+            val message = if (newLiked) {
+                when (provider) {
+                    AccountProvider.SPOTIFY -> "Saved to Spotify Liked Songs!"
+                    AccountProvider.YOUTUBE -> "Saved to YouTube Liked Music!"
+                    AccountProvider.GUEST -> "Liked songs require an account."
+                }
+            } else {
+                "Removed from ${provider.name.lowercase().replaceFirstChar { it.uppercase() }} Library"
             }
+            _toastEvent.emit(message)
         } else {
-            "Removed from ${provider.name.lowercase().replaceFirstChar { it.uppercase() }} Library"
+            // Roll back state and notify failure
+            track.isLiked = wasLiked
+            val message = if (provider == AccountProvider.GUEST) {
+                "Sign in to Spotify or YouTube Music to like tracks"
+            } else {
+                "Failed to update like on ${provider.name.lowercase().replaceFirstChar { it.uppercase() }}"
+            }
+            _toastEvent.emit(message)
         }
-        _toastEvent.emit(message)
 
         return success
     }

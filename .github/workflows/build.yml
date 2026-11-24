@@ -35,14 +35,26 @@ jobs:
 
       - name: Configure Keystore Signature
         run: |
+          mkdir -p app/keystore
           if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
             echo "Using custom keystore from repository secrets..."
             echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > app/keystore/openfy-release.jks
           else
-            echo "Using persistent Openfy release keystore (ensures seamless app updates across builds)..."
+            echo "No custom keystore provided. Generating build keystore..."
+            keytool -genkey -v -keystore app/keystore/openfy-release.jks \
+              -alias "${{ secrets.OPENFY_KEY_ALIAS || 'openfy' }}" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "${{ secrets.OPENFY_KEYSTORE_PASSWORD || 'openfy_ci_build_key' }}" \
+              -keypass "${{ secrets.OPENFY_KEY_PASSWORD || 'openfy_ci_build_key' }}" \
+              -dname "CN=Openfy,OU=CI,O=Openfy,C=US"
           fi
 
       - name: Build Release APK
+        env:
+          OPENFY_KEYSTORE_FILE: "keystore/openfy-release.jks"
+          OPENFY_KEYSTORE_PASSWORD: ${{ secrets.OPENFY_KEYSTORE_PASSWORD || 'openfy_ci_build_key' }}
+          OPENFY_KEY_ALIAS: ${{ secrets.OPENFY_KEY_ALIAS || 'openfy' }}
+          OPENFY_KEY_PASSWORD: ${{ secrets.OPENFY_KEY_PASSWORD || 'openfy_ci_build_key' }}
         run: ./gradlew :app:assembleRelease --stacktrace
 
       - name: Prepare Release Artifacts
@@ -74,6 +86,7 @@ jobs:
           retention-days: 30
 
       - name: Publish Versioned and Rolling Releases
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: |
           TAG="${{ env.RELEASE_TAG }}"
           APK_SHA=$(sha256sum release-artifacts/Openfy.apk | awk '{print $1}')
@@ -104,7 +117,8 @@ jobs:
           printf "### 🎵 Openfy Android - Latest Release (%s)\n\nThis rolling release points to the newest stable build.\n\n* **Version:** \`%s\`\n* **Commit:** \`%s\`\n* **SHA-256:** \`%s\`\n* **Persistent Signature:** Signed with the official Openfy release key. Direct updates over previous versions are supported without uninstalling!\n\n#### 📥 Direct Download:\nDownload **\`Openfy.apk\`** below.\n" "${TAG}" "${TAG}" "${{ github.sha }}" "${APK_SHA}" > release_notes_latest.txt
 
           if gh release view "latest" >/dev/null 2>&1; then
-            echo "Release 'latest' exists. Uploading Android APK with --clobber..."
+            echo "Release 'latest' exists. Updating notes and uploading Android APK with --clobber..."
+            gh release edit latest --title "Openfy Latest Release (Auto-Build)" --notes-file release_notes_latest.txt
             gh release upload latest \
               release-artifacts/Openfy.apk \
               release-artifacts/SHA256SUMS.txt \

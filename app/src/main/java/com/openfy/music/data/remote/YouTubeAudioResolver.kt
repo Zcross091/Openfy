@@ -1124,7 +1124,9 @@ object YouTubeAudioResolver {
     }
 
     suspend fun getUserPlaylists(): List<Playlist> = withContext(Dispatchers.IO) {
-        return@withContext getCuratedPlaylists()
+        // TODO: Implement real YouTube Music playlist fetch via InnerTube /browse endpoint
+        // Previously returned 4 hardcoded curated playlists
+        return@withContext emptyList()
     }
 
     suspend fun getTrendingTracks(limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
@@ -1138,13 +1140,13 @@ object YouTubeAudioResolver {
         }
 
         listOf(
-            Track("J7p4bzqLvCw", "Blinding Lights", listOf(Artist(name = "The Weeknd")), durationSeconds = 202, coverUrl = "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", isLiked = true, youtubeId = "J7p4bzqLvCw"),
-            Track("hT_nvWreIhg", "Counting Stars", listOf(Artist(name = "OneRepublic")), durationSeconds = 257, coverUrl = "https://i.scdn.co/image/ab67616d0000b273b749622cf3977e2d97adba4a", youtubeId = "hT_nvWreIhg"),
-            Track("JGwWNGJdvx8", "Shape of You", listOf(Artist(name = "Ed Sheeran")), durationSeconds = 233, coverUrl = "https://i.scdn.co/image/ab67616d0000b273ba5db46f4b838ef6027e6f96", youtubeId = "JGwWNGJdvx8"),
-            Track("4NRXx6U8ABQ", "Save Your Tears", listOf(Artist(name = "The Weeknd")), durationSeconds = 215, coverUrl = "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", isLiked = true, youtubeId = "4NRXx6U8ABQ"),
-            Track("0VwhorQBdMc", "Sunflower", listOf(Artist(name = "Post Malone"), Artist(name = "Swae Lee")), durationSeconds = 158, coverUrl = "https://i.scdn.co/image/ab67616d0000b273e2e352d89826aef6dbd5ff8f", youtubeId = "0VwhorQBdMc"),
-            Track("nfWlot6h_JM", "Shake It Off", listOf(Artist(name = "Taylor Swift")), durationSeconds = 219, coverUrl = "https://i.scdn.co/image/ab67616d0000b273904445d70d04eb34d6de7970", youtubeId = "nfWlot6h_JM"),
-            Track("YQHsXMglC9A", "Hello", listOf(Artist(name = "Adele")), durationSeconds = 295, coverUrl = "https://i.scdn.co/image/ab67616d0000b27329df04c45b59f77f3050c266", youtubeId = "YQHsXMglC9A")
+            Track("J7p4bzqLvCw", "Blinding Lights", listOf(Artist(name = "The Weeknd")), durationSeconds = 202, coverUrl = "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", isLiked = false, youtubeId = "J7p4bzqLvCw"),
+            Track("hT_nvWreIhg", "Counting Stars", listOf(Artist(name = "OneRepublic")), durationSeconds = 257, coverUrl = "https://i.scdn.co/image/ab67616d0000b273b749622cf3977e2d97adba4a", isLiked = false, youtubeId = "hT_nvWreIhg"),
+            Track("JGwWNGJdvx8", "Shape of You", listOf(Artist(name = "Ed Sheeran")), durationSeconds = 233, coverUrl = "https://i.scdn.co/image/ab67616d0000b273ba5db46f4b838ef6027e6f96", isLiked = false, youtubeId = "JGwWNGJdvx8"),
+            Track("4NRXx6U8ABQ", "Save Your Tears", listOf(Artist(name = "The Weeknd")), durationSeconds = 215, coverUrl = "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", isLiked = false, youtubeId = "4NRXx6U8ABQ"),
+            Track("0VwhorQBdMc", "Sunflower", listOf(Artist(name = "Post Malone"), Artist(name = "Swae Lee")), durationSeconds = 158, coverUrl = "https://i.scdn.co/image/ab67616d0000b273e2e352d89826aef6dbd5ff8f", isLiked = false, youtubeId = "0VwhorQBdMc"),
+            Track("nfWlot6h_JM", "Shake It Off", listOf(Artist(name = "Taylor Swift")), durationSeconds = 219, coverUrl = "https://i.scdn.co/image/ab67616d0000b273904445d70d04eb34d6de7970", isLiked = false, youtubeId = "nfWlot6h_JM"),
+            Track("YQHsXMglC9A", "Hello", listOf(Artist(name = "Adele")), durationSeconds = 295, coverUrl = "https://i.scdn.co/image/ab67616d0000b27329df04c45b59f77f3050c266", isLiked = false, youtubeId = "YQHsXMglC9A")
         )
     }
 

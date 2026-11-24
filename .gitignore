@@ -22,10 +22,10 @@ captures/
 *.dex
 *.xcarchive
 
-# Keystores (allow the default openfy-release.jks so CI can always build signed APKs)
+# Keystores - keep strictly out of VCS
 *.jks
 *.keystore
-!app/keystore/openfy-release.jks
+app/keystore/
 
 # Node & Python leftovers (if any)
 __pycache__/
