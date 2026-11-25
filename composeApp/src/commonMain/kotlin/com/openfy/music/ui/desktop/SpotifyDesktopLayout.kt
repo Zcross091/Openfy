@@ -38,6 +38,7 @@ import com.openfy.music.data.remote.LyricsClient
 import com.openfy.music.data.remote.SpotifyClient
 import com.openfy.music.data.remote.YouTubeAudioResolver
 import com.openfy.music.player.PlaybackManager
+import com.openfy.music.ui.components.AddToPlaylistSheet
 import com.openfy.music.ui.components.CategoryCard
 import com.openfy.music.ui.theme.*
 import com.openfy.music.util.ArtworkUtils
@@ -69,11 +70,20 @@ fun SpotifyDesktopLayout() {
     val repeatMode by PlaybackManager.repeatMode.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
+    var trackForPlaylistSheet by remember { mutableStateOf<Track?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        AccountManager.toastEvent.collect { msg ->
+            snackbarHostState.showSnackbar(msg)
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color.Black,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             SpotifyDesktopPlayerBar(
                 currentTrack = currentTrack,
@@ -88,6 +98,9 @@ fun SpotifyDesktopLayout() {
                 onToggleRightPanel = { isRightPanelOpen = !isRightPanelOpen },
                 onToggleLyrics = {
                     currentTab = if (currentTab == DesktopNavTab.LYRICS) DesktopNavTab.HOME else DesktopNavTab.LYRICS
+                },
+                onOpenAddToPlaylist = {
+                    currentTrack?.let { trackForPlaylistSheet = it }
                 }
             )
         }
@@ -158,17 +171,21 @@ fun SpotifyDesktopLayout() {
                         currentTab == DesktopNavTab.SEARCH -> {
                             DesktopSearchView(
                                 query = searchQuery,
-                                onQueryChange = { searchQuery = it }
+                                onQueryChange = { searchQuery = it },
+                                onAddToPlaylist = { trackForPlaylistSheet = it }
                             )
                         }
                         selectedPlaylist != null -> {
                             DesktopPlaylistDetailView(
                                 playlist = selectedPlaylist!!,
-                                onBack = { selectedPlaylist = null }
+                                onBack = { selectedPlaylist = null },
+                                onAddToPlaylist = { trackForPlaylistSheet = it }
                             )
                         }
                         currentTab == DesktopNavTab.LIKED_SONGS -> {
-                            DesktopLikedSongsView()
+                            DesktopLikedSongsView(
+                                onAddToPlaylist = { trackForPlaylistSheet = it }
+                            )
                         }
                         else -> {
                             DesktopHomeView(
@@ -188,6 +205,13 @@ fun SpotifyDesktopLayout() {
                     )
                 }
             }
+        }
+
+        trackForPlaylistSheet?.let { selectedTrack ->
+            AddToPlaylistSheet(
+                track = selectedTrack,
+                onDismiss = { trackForPlaylistSheet = null }
+            )
         }
     }
 }
@@ -839,8 +863,11 @@ private fun DesktopTrackCard(
 }
 
 @Composable
-private fun DesktopLikedSongsView() {
+private fun DesktopLikedSongsView(
+    onAddToPlaylist: (Track) -> Unit = {}
+) {
     val likedTracks by AccountManager.likedTracks.collectAsState()
+    val libraryError by AccountManager.libraryError.collectAsState()
     val isPlaying by PlaybackManager.isPlaying.collectAsState()
     val currentTrack by PlaybackManager.currentTrack.collectAsState()
 
@@ -934,6 +961,32 @@ private fun DesktopLikedSongsView() {
             }
         }
 
+        if (libraryError != null) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 4.dp),
+                color = Color(0xFF2B1B1B),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Sync warning: $libraryError",
+                        color = Color(0xFFFF8A80),
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { AccountManager.refreshLibrary() }) {
+                        Text("Retry", color = SpotifyGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
         // Desktop Track Table Header
         Row(
             modifier = Modifier
@@ -1007,6 +1060,18 @@ private fun DesktopLikedSongsView() {
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    IconButton(
+                        onClick = { onAddToPlaylist(track) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlaylistAdd,
+                            contentDescription = "Add to playlist",
+                            tint = Color.Gray,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = formatDuration(track.durationSeconds.toLong() * 1000L),
                         color = Color.Gray,
@@ -1022,10 +1087,27 @@ private fun DesktopLikedSongsView() {
 @Composable
 private fun DesktopPlaylistDetailView(
     playlist: Playlist,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onAddToPlaylist: (Track) -> Unit = {}
 ) {
     val isPlaying by PlaybackManager.isPlaying.collectAsState()
     val currentTrack by PlaybackManager.currentTrack.collectAsState()
+    var loadedTracks by remember(playlist.id) { mutableStateOf(playlist.tracks) }
+    var isFetching by remember(playlist.id) { mutableStateOf(false) }
+
+    LaunchedEffect(playlist.id) {
+        if (playlist.tracks.isEmpty()) {
+            isFetching = true
+            loadedTracks = if (playlist.source == "spotify" && SpotifyClient.isConnected) {
+                SpotifyClient.getPlaylistTracks(playlist.id)
+            } else {
+                YouTubeAudioResolver.getPlaylistTracks(playlist.id)
+            }
+            isFetching = false
+        } else {
+            loadedTracks = playlist.tracks
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -1071,8 +1153,8 @@ private fun DesktopPlaylistDetailView(
         ) {
             IconButton(
                 onClick = {
-                    if (playlist.tracks.isNotEmpty()) {
-                        PlaybackManager.playTrack(playlist.tracks[0], playlist.tracks)
+                    if (loadedTracks.isNotEmpty()) {
+                        PlaybackManager.playTrack(loadedTracks[0], loadedTracks)
                     }
                 },
                 modifier = Modifier
@@ -1089,18 +1171,23 @@ private fun DesktopPlaylistDetailView(
             }
         }
 
-        // Tracks list
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp)
-        ) {
-            itemsIndexed(playlist.tracks) { index, track ->
-                val isCurrent = currentTrack?.id == track.id
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { PlaybackManager.playTrack(track, playlist.tracks) }
+        if (isFetching) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = SpotifyGreen)
+            }
+        } else {
+            // Tracks list
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp)
+            ) {
+                itemsIndexed(loadedTracks) { index, track ->
+                    val isCurrent = currentTrack?.id == track.id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .clickable { PlaybackManager.playTrack(track, loadedTracks) }
                         .padding(vertical = 8.dp, horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1148,6 +1235,18 @@ private fun DesktopPlaylistDetailView(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    IconButton(
+                        onClick = { onAddToPlaylist(track) },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlaylistAdd,
+                            contentDescription = "Add to playlist",
+                            tint = Color.Gray,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = formatDuration(track.durationSeconds.toLong() * 1000L),
                         color = Color.Gray,
@@ -1157,13 +1256,15 @@ private fun DesktopPlaylistDetailView(
                 }
             }
         }
+        }
     }
 }
 
 @Composable
 private fun DesktopSearchView(
     query: String,
-    onQueryChange: (String) -> Unit
+    onQueryChange: (String) -> Unit,
+    onAddToPlaylist: (Track) -> Unit = {}
 ) {
     var searchResults by remember { mutableStateOf<List<Track>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
@@ -1273,6 +1374,12 @@ private fun DesktopSearchView(
                                 color = Color.Gray,
                                 fontSize = 12.sp
                             )
+                        }
+                        IconButton(
+                            onClick = { onAddToPlaylist(track) },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(Icons.Default.PlaylistAdd, contentDescription = "Add to playlist", tint = Color.LightGray)
                         }
                         IconButton(
                             onClick = { PlaybackManager.playTrack(track, searchResults) },
@@ -1516,7 +1623,8 @@ private fun SpotifyDesktopPlayerBar(
     repeatMode: Int,
     isRightPanelOpen: Boolean,
     onToggleRightPanel: () -> Unit,
-    onToggleLyrics: () -> Unit
+    onToggleLyrics: () -> Unit,
+    onOpenAddToPlaylist: () -> Unit = {}
 ) {
     var volume by remember { mutableStateOf(1.0f) }
     var isMuted by remember { mutableStateOf(false) }
@@ -1564,6 +1672,17 @@ private fun SpotifyDesktopPlayerBar(
                             fontSize = 11.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = onOpenAddToPlaylist,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddCircleOutline,
+                            contentDescription = "Add to playlist",
+                            tint = Color.LightGray,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     IconButton(

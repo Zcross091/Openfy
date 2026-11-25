@@ -1,0 +1,37 @@
+name: Run KMP Unit Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  test-kmp:
+    name: Run composeApp Desktop & Common Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+          cache: 'gradle'
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x gradlew
+
+      - name: Run composeApp Unit Tests
+        run: ./gradlew :composeApp:desktopTest --stacktrace
+
+      - name: Compile Android Debug Variant (composeApp & app)
+        run: ./gradlew :composeApp:compileDebugKotlinAndroid :app:compileDebugKotlin --stacktrace

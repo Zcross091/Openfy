@@ -1,6 +1,7 @@
 package com.openfy.music.data.remote
 
 import com.openfy.music.data.SettingsManager
+import com.openfy.music.data.TrackIdMapper
 import com.openfy.music.data.model.Album
 import com.openfy.music.data.model.Artist
 import com.openfy.music.data.model.Playlist
@@ -22,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -278,6 +280,73 @@ object SpotifyClient {
         return ArtworkUtils.getHighResArtworkUrl(bestUrl)
     }
 
+    var lastError: String? = null
+
+    internal fun parseTrackObject(t: JsonObject, isLiked: Boolean = false): Track? {
+        val id = t["id"]?.jsonPrimitive?.contentOrNull ?: return null
+        val title = t["name"]?.jsonPrimitive?.contentOrNull ?: "Unknown"
+
+        val artistsList = mutableListOf<Artist>()
+        t["artists"]?.jsonArray?.forEach {
+            val a = it.jsonObject
+            artistsList.add(Artist(a["id"]?.jsonPrimitive?.contentOrNull, a["name"]?.jsonPrimitive?.contentOrNull ?: ""))
+        }
+
+        val albumObj = t["album"]?.jsonObject
+        val albumName = albumObj?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
+        val albumImages = albumObj?.get("images")?.jsonArray
+        val cover = extractHighestResSpotifyImage(albumImages)
+        val album = Album(name = albumName, coverUrl = cover)
+        val duration = (t["duration_ms"]?.jsonPrimitive?.intOrNull ?: 0) / 1000
+        val isrc = t["external_ids"]?.jsonObject?.get("isrc")?.jsonPrimitive?.contentOrNull
+
+        val primaryArtist = artistsList.firstOrNull()?.name.orEmpty()
+        TrackIdMapper.putSpotify(id, isrc, title, primaryArtist)
+
+        return Track(
+            id = id,
+            title = title,
+            artists = artistsList,
+            album = album,
+            durationSeconds = duration,
+            coverUrl = cover,
+            source = "spotify",
+            spotifyId = id,
+            isrc = isrc,
+            isLiked = isLiked
+        )
+    }
+
+    internal fun parseSavedTracksPage(json: JsonObject, isLiked: Boolean = true): List<Track> {
+        val items = json["items"]?.jsonArray ?: return emptyList()
+        return items.mapNotNull { item ->
+            val trackObj = item.jsonObject["track"]?.jsonObject ?: return@mapNotNull null
+            parseTrackObject(trackObj, isLiked = isLiked)
+        }
+    }
+
+    internal fun parsePlaylistsPage(json: JsonObject): List<Playlist> {
+        val items = json["items"]?.jsonArray ?: return emptyList()
+        return items.mapNotNull { item ->
+            val obj = item.jsonObject
+            val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val title = obj["name"]?.jsonPrimitive?.contentOrNull ?: "Untitled Playlist"
+            val desc = obj["description"]?.jsonPrimitive?.contentOrNull
+            val images = obj["images"]?.jsonArray
+            val cover = extractHighestResSpotifyImage(images)
+            val count = obj["tracks"]?.jsonObject?.get("total")?.jsonPrimitive?.intOrNull ?: 0
+
+            Playlist(
+                id = id,
+                title = title,
+                description = desc,
+                coverUrl = cover,
+                trackCount = count,
+                source = "spotify"
+            )
+        }
+    }
+
     suspend fun fetchProfile(): UserProfile? = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext null
         try {
@@ -293,61 +362,37 @@ object SpotifyClient {
 
                 val profile = UserProfile(id, name, avatarUrl = avatar)
                 userProfile = profile
+                lastError = null
                 return@withContext profile
+            } else {
+                lastError = "Spotify profile HTTP ${resp.status.value}"
             }
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify profile error: ${e.message}"
+            println("[SpotifyClient] fetchProfile failed: ${e.message}")
         }
         null
     }
 
     suspend fun getLikedTracks(limit: Int = 50, offset: Int = 0): List<Track> = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext emptyList()
-        val tracks = mutableListOf<Track>()
         try {
             val resp = NetworkClient.client.get("https://api.spotify.com/v1/me/tracks?limit=$limit&offset=$offset") {
                 header("Authorization", "Bearer $token")
             }
             if (resp.status.value in 200..299) {
                 val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
-                val items = json["items"]?.jsonArray ?: return@withContext emptyList()
-                for (item in items) {
-                    val t = item.jsonObject["track"]?.jsonObject ?: continue
-                    val id = t["id"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val title = t["name"]?.jsonPrimitive?.contentOrNull ?: "Unknown"
-
-                    val artistsList = mutableListOf<Artist>()
-                    t["artists"]?.jsonArray?.forEach {
-                        val a = it.jsonObject
-                        artistsList.add(Artist(a["id"]?.jsonPrimitive?.contentOrNull, a["name"]?.jsonPrimitive?.contentOrNull ?: ""))
-                    }
-
-                    val albumObj = t["album"]?.jsonObject
-                    val albumName = albumObj?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
-                    val albumImages = albumObj?.get("images")?.jsonArray
-                    val cover = extractHighestResSpotifyImage(albumImages)
-                    val album = Album(name = albumName, coverUrl = cover)
-                    val duration = (t["duration_ms"]?.jsonPrimitive?.intOrNull ?: 0) / 1000
-
-                    tracks.add(
-                        Track(
-                            id = id,
-                            title = title,
-                            artists = artistsList,
-                            album = album,
-                            durationSeconds = duration,
-                            coverUrl = cover,
-                            source = "spotify",
-                            spotifyId = id,
-                            isLiked = true
-                        )
-                    )
-                }
+                lastError = null
+                return@withContext parseSavedTracksPage(json, isLiked = true)
+            } else {
+                lastError = "Spotify liked tracks HTTP ${resp.status.value}"
+                println("[SpotifyClient] getLikedTracks HTTP ${resp.status.value}")
             }
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify liked tracks error: ${e.message}"
+            println("[SpotifyClient] getLikedTracks failed: ${e.message}")
         }
-        tracks
+        emptyList()
     }
 
     suspend fun getAllLikedTracksProgressive(
@@ -364,49 +409,21 @@ object SpotifyClient {
                 val resp = NetworkClient.client.get("https://api.spotify.com/v1/me/tracks?limit=$pageSize&offset=$offset") {
                     header("Authorization", "Bearer $token")
                 }
-                if (resp.status.value !in 200..299) break
+                if (resp.status.value !in 200..299) {
+                    lastError = "Spotify liked tracks page HTTP ${resp.status.value}"
+                    break
+                }
                 val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
                 total = json["total"]?.jsonPrimitive?.intOrNull ?: 0
-                val items = json["items"]?.jsonArray ?: break
-                if (items.isEmpty()) break
+                val batch = parseSavedTracksPage(json, isLiked = true)
+                if (batch.isEmpty()) break
 
-                val batch = mutableListOf<Track>()
-                for (item in items) {
-                    val t = item.jsonObject["track"]?.jsonObject ?: continue
-                    val id = t["id"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val title = t["name"]?.jsonPrimitive?.contentOrNull ?: "Unknown"
-
-                    val artistsList = mutableListOf<Artist>()
-                    t["artists"]?.jsonArray?.forEach {
-                        val a = it.jsonObject
-                        artistsList.add(Artist(a["id"]?.jsonPrimitive?.contentOrNull, a["name"]?.jsonPrimitive?.contentOrNull ?: ""))
-                    }
-
-                    val albumObj = t["album"]?.jsonObject
-                    val albumName = albumObj?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
-                    val albumImages = albumObj?.get("images")?.jsonArray
-                    val cover = extractHighestResSpotifyImage(albumImages)
-                    val album = Album(name = albumName, coverUrl = cover)
-                    val duration = (t["duration_ms"]?.jsonPrimitive?.intOrNull ?: 0) / 1000
-
-                    batch.add(
-                        Track(
-                            id = id,
-                            title = title,
-                            artists = artistsList,
-                            album = album,
-                            durationSeconds = duration,
-                            coverUrl = cover,
-                            source = "spotify",
-                            spotifyId = id,
-                            isLiked = true
-                        )
-                    )
-                }
                 allTracks.addAll(batch)
                 onBatchLoaded(allTracks.toList())
                 offset += pageSize
             } catch (e: Exception) {
+                lastError = "Spotify liked tracks pagination failed: ${e.message}"
+                println("[SpotifyClient] getAllLikedTracksProgressive failed: ${e.message}")
                 break
             }
         }
@@ -414,39 +431,23 @@ object SpotifyClient {
 
     suspend fun getUserPlaylists(limit: Int = 50, offset: Int = 0): List<Playlist> = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext emptyList()
-        val playlists = mutableListOf<Playlist>()
         try {
             val resp = NetworkClient.client.get("https://api.spotify.com/v1/me/playlists?limit=$limit&offset=$offset") {
                 header("Authorization", "Bearer $token")
             }
             if (resp.status.value in 200..299) {
                 val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
-                val items = json["items"]?.jsonArray ?: return@withContext emptyList()
-                for (item in items) {
-                    val obj = item.jsonObject
-                    val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val title = obj["name"]?.jsonPrimitive?.contentOrNull ?: "Untitled Playlist"
-                    val desc = obj["description"]?.jsonPrimitive?.contentOrNull
-                    val images = obj["images"]?.jsonArray
-                    val cover = extractHighestResSpotifyImage(images)
-                    val count = obj["tracks"]?.jsonObject?.get("total")?.jsonPrimitive?.intOrNull ?: 0
-
-                    playlists.add(
-                        Playlist(
-                            id = id,
-                            title = title,
-                            description = desc,
-                            coverUrl = cover,
-                            trackCount = count,
-                            source = "spotify"
-                        )
-                    )
-                }
+                lastError = null
+                return@withContext parsePlaylistsPage(json)
+            } else {
+                lastError = "Spotify playlists HTTP ${resp.status.value}"
+                println("[SpotifyClient] getUserPlaylists HTTP ${resp.status.value}")
             }
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify playlists error: ${e.message}"
+            println("[SpotifyClient] getUserPlaylists failed: ${e.message}")
         }
-        playlists
+        emptyList()
     }
 
     suspend fun getAllUserPlaylistsProgressive(
@@ -463,37 +464,21 @@ object SpotifyClient {
                 val resp = NetworkClient.client.get("https://api.spotify.com/v1/me/playlists?limit=$pageSize&offset=$offset") {
                     header("Authorization", "Bearer $token")
                 }
-                if (resp.status.value !in 200..299) break
+                if (resp.status.value !in 200..299) {
+                    lastError = "Spotify playlists page HTTP ${resp.status.value}"
+                    break
+                }
                 val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
                 total = json["total"]?.jsonPrimitive?.intOrNull ?: 0
-                val items = json["items"]?.jsonArray ?: break
-                if (items.isEmpty()) break
+                val batch = parsePlaylistsPage(json)
+                if (batch.isEmpty()) break
 
-                val batch = mutableListOf<Playlist>()
-                for (item in items) {
-                    val obj = item.jsonObject
-                    val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val title = obj["name"]?.jsonPrimitive?.contentOrNull ?: "Untitled Playlist"
-                    val desc = obj["description"]?.jsonPrimitive?.contentOrNull
-                    val images = obj["images"]?.jsonArray
-                    val cover = extractHighestResSpotifyImage(images)
-                    val count = obj["tracks"]?.jsonObject?.get("total")?.jsonPrimitive?.intOrNull ?: 0
-
-                    batch.add(
-                        Playlist(
-                            id = id,
-                            title = title,
-                            description = desc,
-                            coverUrl = cover,
-                            trackCount = count,
-                            source = "spotify"
-                        )
-                    )
-                }
                 allPlaylists.addAll(batch)
                 onBatchLoaded(allPlaylists.toList())
                 offset += pageSize
             } catch (e: Exception) {
+                lastError = "Spotify playlists pagination failed: ${e.message}"
+                println("[SpotifyClient] getAllUserPlaylistsProgressive failed: ${e.message}")
                 break
             }
         }
@@ -520,7 +505,7 @@ object SpotifyClient {
                 }
             }
         } catch (e: Exception) {
-            // Ignore
+            println("[SpotifyClient] getFollowedArtists failed: ${e.message}")
         }
         artists
     }
@@ -548,62 +533,29 @@ object SpotifyClient {
                 }
             }
         } catch (e: Exception) {
-            // Ignore
+            println("[SpotifyClient] getSavedAlbums failed: ${e.message}")
         }
         albums
     }
 
     suspend fun getRecentlyPlayed(limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext emptyList()
-        val tracks = mutableListOf<Track>()
         try {
             val resp = NetworkClient.client.get("https://api.spotify.com/v1/me/player/recently-played?limit=$limit") {
                 header("Authorization", "Bearer $token")
             }
             if (resp.status.value in 200..299) {
                 val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
-                val items = json["items"]?.jsonArray ?: return@withContext emptyList()
-                for (item in items) {
-                    val t = item.jsonObject["track"]?.jsonObject ?: continue
-                    val id = t["id"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val title = t["name"]?.jsonPrimitive?.contentOrNull ?: "Unknown"
-
-                    val artistsList = mutableListOf<Artist>()
-                    t["artists"]?.jsonArray?.forEach {
-                        val a = it.jsonObject
-                        artistsList.add(Artist(a["id"]?.jsonPrimitive?.contentOrNull, a["name"]?.jsonPrimitive?.contentOrNull ?: ""))
-                    }
-
-                    val albumObj = t["album"]?.jsonObject
-                    val albumName = albumObj?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
-                    val albumImages = albumObj?.get("images")?.jsonArray
-                    val cover = extractHighestResSpotifyImage(albumImages)
-                    val album = Album(name = albumName, coverUrl = cover)
-                    val duration = (t["duration_ms"]?.jsonPrimitive?.intOrNull ?: 0) / 1000
-
-                    tracks.add(
-                        Track(
-                            id = id,
-                            title = title,
-                            artists = artistsList,
-                            album = album,
-                            durationSeconds = duration,
-                            coverUrl = cover,
-                            source = "spotify",
-                            spotifyId = id
-                        )
-                    )
-                }
+                return@withContext parseSavedTracksPage(json, isLiked = false)
             }
         } catch (e: Exception) {
-            // Ignore
+            println("[SpotifyClient] getRecentlyPlayed failed: ${e.message}")
         }
-        tracks
+        emptyList()
     }
 
     suspend fun searchSpotifyTracks(query: String, limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext emptyList()
-        val tracks = mutableListOf<Track>()
         try {
             val resp = NetworkClient.client.get("https://api.spotify.com/v1/search?q=${query.encodeURLParameter()}&type=track&limit=$limit") {
                 header("Authorization", "Bearer $token")
@@ -611,99 +563,63 @@ object SpotifyClient {
             if (resp.status.value in 200..299) {
                 val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
                 val items = json["tracks"]?.jsonObject?.get("items")?.jsonArray ?: return@withContext emptyList()
-                for (item in items) {
-                    val t = item.jsonObject
-                    val id = t["id"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val title = t["name"]?.jsonPrimitive?.contentOrNull ?: "Unknown"
-
-                    val artistsList = mutableListOf<Artist>()
-                    t["artists"]?.jsonArray?.forEach {
-                        val a = it.jsonObject
-                        artistsList.add(Artist(a["id"]?.jsonPrimitive?.contentOrNull, a["name"]?.jsonPrimitive?.contentOrNull ?: ""))
-                    }
-
-                    val albumObj = t["album"]?.jsonObject
-                    val albumName = albumObj?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
-                    val albumImages = albumObj?.get("images")?.jsonArray
-                    val cover = extractHighestResSpotifyImage(albumImages)
-                    val album = Album(name = albumName, coverUrl = cover)
-                    val duration = (t["duration_ms"]?.jsonPrimitive?.intOrNull ?: 0) / 1000
-
-                    tracks.add(
-                        Track(
-                            id = id,
-                            title = title,
-                            artists = artistsList,
-                            album = album,
-                            durationSeconds = duration,
-                            coverUrl = cover,
-                            source = "spotify",
-                            spotifyId = id
-                        )
-                    )
-                }
+                return@withContext items.mapNotNull { parseTrackObject(it.jsonObject, isLiked = false) }
             }
         } catch (e: Exception) {
-            // Ignore
+            println("[SpotifyClient] searchSpotifyTracks failed: ${e.message}")
         }
-        tracks
+        emptyList()
     }
 
     suspend fun getPlaylistTracks(playlistId: String, limit: Int = 50): List<Track> = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext emptyList()
-        val tracks = mutableListOf<Track>()
         try {
             val resp = NetworkClient.client.get("https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=$limit") {
                 header("Authorization", "Bearer $token")
             }
             if (resp.status.value in 200..299) {
                 val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
-                val items = json["items"]?.jsonArray ?: return@withContext emptyList()
-                for (item in items) {
-                    val t = item.jsonObject["track"]?.jsonObject ?: continue
-                    val id = t["id"]?.jsonPrimitive?.contentOrNull ?: continue
-                    val title = t["name"]?.jsonPrimitive?.contentOrNull ?: "Unknown"
-
-                    val artistsList = mutableListOf<Artist>()
-                    t["artists"]?.jsonArray?.forEach {
-                        val a = it.jsonObject
-                        artistsList.add(Artist(a["id"]?.jsonPrimitive?.contentOrNull, a["name"]?.jsonPrimitive?.contentOrNull ?: ""))
-                    }
-
-                    val albumObj = t["album"]?.jsonObject
-                    val albumName = albumObj?.get("name")?.jsonPrimitive?.contentOrNull ?: ""
-                    val albumImages = albumObj?.get("images")?.jsonArray
-                    val cover = extractHighestResSpotifyImage(albumImages)
-                    val album = Album(name = albumName, coverUrl = cover)
-                    val duration = (t["duration_ms"]?.jsonPrimitive?.intOrNull ?: 0) / 1000
-
-                    tracks.add(
-                        Track(
-                            id = id,
-                            title = title,
-                            artists = artistsList,
-                            album = album,
-                            durationSeconds = duration,
-                            coverUrl = cover,
-                            source = "spotify",
-                            spotifyId = id
-                        )
-                    )
-                }
+                return@withContext parseSavedTracksPage(json, isLiked = false)
             }
         } catch (e: Exception) {
-            // Ignore
+            println("[SpotifyClient] getPlaylistTracks failed: ${e.message}")
         }
-        tracks
+        emptyList()
+    }
+
+    suspend fun resolveOrSearchTrackId(track: Track): String? = withContext(Dispatchers.IO) {
+        TrackIdMapper.resolveCachedSpotifyId(track)?.let { return@withContext it }
+
+        val cleanTitle = TrackIdMapper.normalizeTitle(track.title)
+        val cleanArtist = TrackIdMapper.normalizeArtist(track.artistNames)
+        val query = if (cleanArtist.isNotEmpty()) "$cleanTitle $cleanArtist" else track.title
+        val candidates = searchSpotifyTracks(query, limit = 5)
+        if (candidates.isEmpty()) return@withContext null
+
+        val best = candidates.maxByOrNull { cand ->
+            var score = 0
+            if (TrackIdMapper.normalizeTitle(cand.title) == cleanTitle) score += 3
+            if (TrackIdMapper.normalizeArtist(cand.artistNames) == cleanArtist) score += 3
+            if (track.durationSeconds > 0 && kotlin.math.abs(cand.durationSeconds - track.durationSeconds) <= 4) {
+                score += 2
+            }
+            score
+        } ?: candidates.first()
+
+        val resolvedId = best.spotifyId ?: best.id
+        TrackIdMapper.putPair(
+            spotifyId = resolvedId,
+            youtubeId = track.youtubeId,
+            isrc = best.isrc ?: track.isrc,
+            title = track.title,
+            artistName = track.artistNames
+        )
+        resolvedId
     }
 
     suspend fun saveTrack(track: Track): Boolean = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext false
-        var spotifyId = track.spotifyId
-        if (spotifyId == null) {
-            spotifyId = searchTrackId(track.title, track.artistNames)
-        }
-        if (spotifyId == null) return@withContext false
+        val spotifyId = resolveOrSearchTrackId(track) ?: return@withContext false
 
         try {
             val resp = NetworkClient.client.put("https://api.spotify.com/v1/me/tracks?ids=$spotifyId") {
@@ -713,21 +629,23 @@ object SpotifyClient {
             }
             return@withContext resp.status.value in 200..299
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify saveTrack error: ${e.message}"
+            println("[SpotifyClient] saveTrack failed: ${e.message}")
         }
         false
     }
 
     suspend fun removeTrack(track: Track): Boolean = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext false
-        val spotifyId = track.spotifyId ?: track.id
+        val spotifyId = resolveOrSearchTrackId(track) ?: return@withContext false
         try {
             val resp = NetworkClient.client.delete("https://api.spotify.com/v1/me/tracks?ids=$spotifyId") {
                 header("Authorization", "Bearer $token")
             }
             return@withContext resp.status.value in 200..299
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify removeTrack error: ${e.message}"
+            println("[SpotifyClient] removeTrack failed: ${e.message}")
         }
         false
     }
@@ -748,31 +666,19 @@ object SpotifyClient {
 
             if (resp.status.value in 200..299) {
                 val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
-                val id = json["id"]?.jsonPrimitive?.contentOrNull ?: return@withContext null
-                val title = json["name"]?.jsonPrimitive?.contentOrNull ?: name
-                val desc = json["description"]?.jsonPrimitive?.contentOrNull
-                return@withContext Playlist(
-                    id = id,
-                    title = title,
-                    description = desc,
-                    coverUrl = null,
-                    trackCount = 0,
-                    source = "spotify"
-                )
+                return@withContext parsePlaylistsPage(buildJsonObject { put("items", buildJsonArray { add(json) }) }).firstOrNull()
+                    ?: Playlist(id = json["id"]?.jsonPrimitive?.contentOrNull ?: return@withContext null, title = name, source = "spotify")
             }
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify createPlaylist error: ${e.message}"
+            println("[SpotifyClient] createPlaylist failed: ${e.message}")
         }
         null
     }
 
     suspend fun addTrackToPlaylist(playlistId: String, track: Track): Boolean = withContext(Dispatchers.IO) {
         val token = ensureFreshToken() ?: return@withContext false
-        var spotifyId = track.spotifyId
-        if (spotifyId == null) {
-            spotifyId = searchTrackId(track.title, track.artistNames)
-        }
-        if (spotifyId == null) return@withContext false
+        val spotifyId = resolveOrSearchTrackId(track) ?: return@withContext false
 
         try {
             val payload = buildJsonObject {
@@ -788,27 +694,35 @@ object SpotifyClient {
             }
             return@withContext resp.status.value in 200..299
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify addTrackToPlaylist error: ${e.message}"
+            println("[SpotifyClient] addTrackToPlaylist failed: ${e.message}")
         }
         false
     }
 
-    private suspend fun searchTrackId(title: String, artist: String): String? = withContext(Dispatchers.IO) {
-        val token = ensureFreshToken() ?: return@withContext null
+    suspend fun removeTrackFromPlaylist(playlistId: String, track: Track): Boolean = withContext(Dispatchers.IO) {
+        val token = ensureFreshToken() ?: return@withContext false
+        val spotifyId = TrackIdMapper.resolveCachedSpotifyId(track) ?: return@withContext false
+
         try {
-            val query = "track:$title artist:$artist"
-            val resp = NetworkClient.client.get("https://api.spotify.com/v1/search?q=${query.encodeURLParameter()}&type=track&limit=1") {
+            val payload = buildJsonObject {
+                put("tracks", buildJsonArray {
+                    add(buildJsonObject {
+                        put("uri", "spotify:track:$spotifyId")
+                    })
+                })
+            }
+            val resp = NetworkClient.client.delete("https://api.spotify.com/v1/playlists/$playlistId/tracks") {
                 header("Authorization", "Bearer $token")
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
             }
-            if (resp.status.value in 200..299) {
-                val json = NetworkClient.json.parseToJsonElement(resp.bodyAsText()).jsonObject
-                val items = json["tracks"]?.jsonObject?.get("items")?.jsonArray
-                return@withContext items?.firstOrNull()?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
-            }
+            return@withContext resp.status.value in 200..299
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify removeTrackFromPlaylist error: ${e.message}"
+            println("[SpotifyClient] removeTrackFromPlaylist failed: ${e.message}")
         }
-        null
+        false
     }
 
     fun disconnect() {
@@ -816,5 +730,6 @@ object SpotifyClient {
         spDcCookie = null
         tokenExpiryMs = 0L
         userProfile = null
+        lastError = null
     }
 }

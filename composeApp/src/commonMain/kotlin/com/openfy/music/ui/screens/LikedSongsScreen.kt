@@ -102,7 +102,7 @@ fun LikedSongsScreen(
             playlistTracks = if (p.source == "spotify" && SpotifyClient.isConnected) {
                 SpotifyClient.getPlaylistTracks(p.id)
             } else {
-                YouTubeAudioResolver.getTrendingTracks(p.trackCount.coerceAtLeast(10))
+                YouTubeAudioResolver.getPlaylistTracks(p.id)
             }
             isLoading = false
         }

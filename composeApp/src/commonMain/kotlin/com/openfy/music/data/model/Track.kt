@@ -30,6 +30,7 @@ data class Track(
     val source: String = "youtube",
     val youtubeId: String? = null,
     val spotifyId: String? = null,
+    val isrc: String? = null,
     var isLiked: Boolean = false
 ) {
     val artistNames: String
