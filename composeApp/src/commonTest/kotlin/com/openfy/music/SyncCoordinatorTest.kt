@@ -106,4 +106,24 @@ class SyncCoordinatorTest {
         assertEquals("sp_pl1" to "trk_1", sp.playlistRemovals.single())
         assertFalse(rolledBack.anySucceeded)
     }
+
+    @Test
+    fun fetchesPlaylistsAndCreatesTargetedPlaylistsAcrossConnectedServices() = runTest {
+        val sp = FakeMusicService(ServiceProvider.SPOTIFY, isConnected = true)
+        val yt = FakeMusicService(ServiceProvider.YOUTUBE_MUSIC, isConnected = false)
+        val coordinator = SyncCoordinator(sp, yt)
+
+        assertEquals(listOf(ServiceProvider.SPOTIFY), coordinator.connectedProviders)
+
+        val fetched = coordinator.getPlaylists()
+        assertTrue(fetched.spotify?.isSuccess == true)
+        assertEquals(null, fetched.youtube)
+
+        val created = coordinator.createPlaylist(
+            name = "Road Trip",
+            targetProviders = setOf(ServiceProvider.SPOTIFY, ServiceProvider.YOUTUBE_MUSIC)
+        )
+        assertEquals("Road Trip", created.spotify?.getOrNull()?.title)
+        assertEquals(null, created.youtube)
+    }
 }

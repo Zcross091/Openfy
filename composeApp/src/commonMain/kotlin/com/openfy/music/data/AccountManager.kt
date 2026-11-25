@@ -88,18 +88,26 @@ object AccountManager {
         scope.launch {
             _libraryError.value = null
             try {
+                SpotifyClient.lastError = null
+                YouTubeAudioResolver.lastError = null
                 val tracks = getLikedTracks()
-                val pls = getUserPlaylists()
-                _likedTracks.value = tracks
-                _playlists.value = pls
-                val providerErr = when (_activeProvider.value) {
+                val tracksErr = when (_activeProvider.value) {
                     AccountProvider.SPOTIFY -> SpotifyClient.lastError
                     AccountProvider.YOUTUBE -> YouTubeAudioResolver.lastError
                     AccountProvider.GUEST -> null
                 }
-                if (providerErr != null && tracks.isEmpty() && pls.isEmpty()) {
-                    _libraryError.value = providerErr
+                SpotifyClient.lastError = null
+                YouTubeAudioResolver.lastError = null
+                val pls = getUserPlaylists()
+                val plsErr = when (_activeProvider.value) {
+                    AccountProvider.SPOTIFY -> SpotifyClient.lastError
+                    AccountProvider.YOUTUBE -> YouTubeAudioResolver.lastError
+                    AccountProvider.GUEST -> null
                 }
+
+                _likedTracks.value = tracks
+                _playlists.value = pls
+                _libraryError.value = tracksErr ?: plsErr
             } catch (e: Exception) {
                 _libraryError.value = e.message ?: "Failed to refresh library"
                 println("[AccountManager] refreshLibrary error: ${e.message}")

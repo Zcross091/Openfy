@@ -171,6 +171,7 @@ jobs:
           retention-days: 30
 
       - name: Publish iOS Release Assets
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: |
           TAG="${{ env.RELEASE_TAG }}"
           echo "Target tag: ${TAG}"

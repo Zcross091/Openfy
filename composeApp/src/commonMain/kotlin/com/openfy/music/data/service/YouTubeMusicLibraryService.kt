@@ -4,6 +4,7 @@ import com.openfy.music.data.AccountManager
 import com.openfy.music.data.model.Playlist
 import com.openfy.music.data.model.Track
 import com.openfy.music.data.remote.YouTubeAudioResolver
+import com.openfy.music.util.SyncLock
 
 class YouTubeMusicLibraryService : MusicLibraryService {
     override val provider: ServiceProvider = ServiceProvider.YOUTUBE_MUSIC
@@ -11,6 +12,7 @@ class YouTubeMusicLibraryService : MusicLibraryService {
     override val isConnected: Boolean
         get() = AccountManager.isYouTubeConnected && !AccountManager.youtubeCookie.isNullOrEmpty()
 
+    private val lock = SyncLock()
     // Tracks setVideoId returned by ACTION_ADD_VIDEO so rollback can cleanly remove the exact entry
     private val addedSetVideoIds = mutableMapOf<Pair<String, String>, String>()
 
@@ -70,7 +72,9 @@ class YouTubeMusicLibraryService : MusicLibraryService {
                 ?: return ServiceResult.Failure("Could not match '${track.title}' on YouTube Music", isRetryable = false)
             val editResult = YouTubeAudioResolver.addTrackToYtmPlaylist(playlistId, videoId)
             if (editResult.succeeded) {
-                editResult.setVideoId?.let { addedSetVideoIds[playlistId to videoId] = it }
+                editResult.setVideoId?.let { id ->
+                    lock.withLock { addedSetVideoIds[playlistId to videoId] = id }
+                }
                 ServiceResult.Success(Unit)
             } else {
                 ServiceResult.Failure(editResult.errorMessage ?: "Failed to add to YouTube Music playlist")
@@ -87,10 +91,14 @@ class YouTubeMusicLibraryService : MusicLibraryService {
         return try {
             val videoId = YouTubeAudioResolver.resolveOrSearchVideoId(track)
                 ?: return ServiceResult.Failure("Could not resolve videoId for rollback", isRetryable = false)
-            val setVideoId = addedSetVideoIds.remove(playlistId to videoId)
+            val setVideoId = lock.withLock { addedSetVideoIds[playlistId to videoId] }
             val ok = YouTubeAudioResolver.removeTrackFromYtmPlaylist(playlistId, videoId, setVideoId)
-            if (ok) ServiceResult.Success(Unit)
-            else ServiceResult.Failure("Failed to rollback YouTube Music playlist item")
+            if (ok) {
+                lock.withLock { addedSetVideoIds.remove(playlistId to videoId) }
+                ServiceResult.Success(Unit)
+            } else {
+                ServiceResult.Failure("Failed to rollback YouTube Music playlist item")
+            }
         } catch (e: Exception) {
             ServiceResult.Failure(e.message ?: "YouTube Music rollback error", cause = e)
         }

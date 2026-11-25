@@ -868,6 +868,7 @@ private fun DesktopLikedSongsView(
 ) {
     val likedTracks by AccountManager.likedTracks.collectAsState()
     val libraryError by AccountManager.libraryError.collectAsState()
+    val activeAccount by AccountManager.activeAccount.collectAsState()
     val isPlaying by PlaybackManager.isPlaying.collectAsState()
     val currentTrack by PlaybackManager.currentTrack.collectAsState()
 
@@ -903,7 +904,7 @@ private fun DesktopLikedSongsView(
                     Text("Liked Songs", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Black)
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Guest User • ${likedTracks.size} songs",
+                        text = "${activeAccount.displayName} • ${likedTracks.size} songs",
                         color = Color.LightGray,
                         fontSize = 13.sp
                     )

@@ -87,4 +87,33 @@ class TrackIdMapperTest {
         assertNull(TrackIdMapper.spotifyToYoutube("sp_exp"))
         assertNull(TrackIdMapper.findByIsrc("ISRC00001"))
     }
+
+    @Test
+    fun ignoresEmptyOrSymbolOnlySlugsToAvoidCollisions() {
+        TrackIdMapper.putSpotify("sp_sym1", isrc = null, title = "???", artistName = "!!!")
+        TrackIdMapper.putYoutube("yt_sym21234", isrc = null, title = "---", artistName = "...")
+
+        assertNull(TrackIdMapper.findBySlug("???", "!!!"))
+        assertNull(TrackIdMapper.spotifyToYoutube("sp_sym1"))
+        assertNull(TrackIdMapper.youtubeToSpotify("yt_sym21234"))
+    }
+
+    @Test
+    fun resolvesCachedSpotifyIdViaPutPair() {
+        TrackIdMapper.putPair(
+            spotifyId = "sp_pair_1",
+            youtubeId = "yt_pair_111",
+            isrc = "GBAYE0000123",
+            title = "Yellow",
+            artistName = "Coldplay"
+        )
+
+        val ytTrack = Track(
+            id = "yt_pair_111",
+            title = "Yellow",
+            artists = listOf(Artist(name = "Coldplay")),
+            youtubeId = "yt_pair_111"
+        )
+        assertEquals("sp_pair_1", TrackIdMapper.resolveCachedSpotifyId(ytTrack))
+    }
 }

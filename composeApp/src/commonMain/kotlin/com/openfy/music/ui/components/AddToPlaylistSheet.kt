@@ -69,13 +69,18 @@ fun AddToPlaylistSheet(
 ) {
     val scope = rememberCoroutineScope()
     val coordinator = remember { AccountManager.syncCoordinator }
-    val connectedProviders = remember { coordinator.connectedProviders }
+    val activeAccount by AccountManager.activeAccount.collectAsState()
+    val spotifyEmail by AccountManager.spotifyEmail.collectAsState()
+    val youtubeEmail by AccountManager.youtubeEmail.collectAsState()
+    val connectedProviders = remember(activeAccount, spotifyEmail, youtubeEmail) {
+        coordinator.connectedProviders
+    }
 
     var sheetState by remember { mutableStateOf<AddSheetState>(AddSheetState.Loading) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
-    var createOnSpotify by remember { mutableStateOf(ServiceProvider.SPOTIFY in connectedProviders) }
-    var createOnYoutube by remember { mutableStateOf(ServiceProvider.YOUTUBE_MUSIC in connectedProviders) }
+    var createOnSpotify by remember(connectedProviders) { mutableStateOf(ServiceProvider.SPOTIFY in connectedProviders) }
+    var createOnYoutube by remember(connectedProviders) { mutableStateOf(ServiceProvider.YOUTUBE_MUSIC in connectedProviders) }
 
     suspend fun loadAllPlaylists() {
         sheetState = AddSheetState.Loading
@@ -367,6 +372,7 @@ fun AddToPlaylistSheet(
                                     sheetState = current.copy(isBusy = true)
                                     scope.launch {
                                         val updated = coordinator.retryFailed(track, current.report)
+                                        AccountManager.refreshLibrary()
                                         sheetState = AddSheetState.Result(updated, isBusy = false)
                                     }
                                 },
@@ -481,9 +487,43 @@ fun AddToPlaylistSheet(
                             val createdDual = coordinator.createPlaylist(name, targets)
                             val spList = listOfNotNull(createdDual.spotify?.getOrNull())
                             val ytList = listOfNotNull(createdDual.youtube?.getOrNull())
-                            val report = coordinator.addToPlaylists(track, spList, ytList)
+                            val addReport = if (spList.isNotEmpty() || ytList.isNotEmpty()) {
+                                coordinator.addToPlaylists(track, spList, ytList)
+                            } else {
+                                PlaylistSyncReport(emptyList())
+                            }
+
+                            val creationFailures = buildList {
+                                if (ServiceProvider.SPOTIFY in targets && createdDual.spotify is ServiceResult.Failure) {
+                                    add(
+                                        PlaylistSyncEntry(
+                                            provider = ServiceProvider.SPOTIFY,
+                                            playlist = Playlist(id = "create_failed_sp", title = name, source = "spotify"),
+                                            result = ServiceResult.Failure(
+                                                message = "Create playlist failed: ${createdDual.spotify.message}",
+                                                isRetryable = false
+                                            )
+                                        )
+                                    )
+                                }
+                                if (ServiceProvider.YOUTUBE_MUSIC in targets && createdDual.youtube is ServiceResult.Failure) {
+                                    add(
+                                        PlaylistSyncEntry(
+                                            provider = ServiceProvider.YOUTUBE_MUSIC,
+                                            playlist = Playlist(id = "create_failed_yt", title = name, source = "youtube"),
+                                            result = ServiceResult.Failure(
+                                                message = "Create playlist failed: ${createdDual.youtube.message}",
+                                                isRetryable = false
+                                            )
+                                        )
+                                    )
+                                }
+                            }
+
                             AccountManager.refreshLibrary()
-                            sheetState = AddSheetState.Result(report)
+                            sheetState = AddSheetState.Result(
+                                PlaylistSyncReport(addReport.entries + creationFailures)
+                            )
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen)

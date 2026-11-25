@@ -24,6 +24,7 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -176,6 +177,8 @@ object SpotifyClient {
         set(value) = settings.putLong("spotify_token_expiry", value)
 
     var userProfile: UserProfile? = null
+    private var anonymousAccessToken: String? = null
+    private var anonymousTokenExpiryMs: Long = 0L
 
     val isConnected: Boolean
         get() = !accessToken.isNullOrEmpty() || !spDcCookie.isNullOrEmpty()
@@ -201,24 +204,35 @@ object SpotifyClient {
                 val body = resp.bodyAsText()
                 val json = NetworkClient.json.parseToJsonElement(body).jsonObject
                 val token = json["accessToken"]?.jsonPrimitive?.contentOrNull
+                val isAnon = json["isAnonymous"]?.jsonPrimitive?.booleanOrNull ?: false
                 val expiry = json["accessTokenExpirationTimestampMs"]?.jsonPrimitive?.longOrNull
                     ?: (getTimeMillis() + 3600_000L)
 
-                if (!token.isNullOrEmpty()) {
+                if (!token.isNullOrEmpty() && !isAnon) {
                     spDcCookie = cleanCookie
                     accessToken = token
                     tokenExpiryMs = expiry
+                    lastError = null
                     fetchProfile()
                     return@withContext true
+                } else {
+                    lastError = "Spotify session cookie expired or returned anonymous session"
                 }
+            } else {
+                lastError = "Spotify token exchange HTTP ${resp.status.value}"
             }
         } catch (e: Exception) {
-            // Ignore
+            lastError = "Spotify token exchange failed: ${e.message}"
+            println("[SpotifyClient] exchangeCookieForAccessToken failed: ${e.message}")
         }
         false
     }
 
     suspend fun fetchAnonymousAccessToken(): String? = withContext(Dispatchers.IO) {
+        val now = getTimeMillis()
+        if (!anonymousAccessToken.isNullOrEmpty() && now < (anonymousTokenExpiryMs - 60_000L)) {
+            return@withContext anonymousAccessToken
+        }
         try {
             val totp = SpotifyTotp.generateTotp()
             val url = "https://open.spotify.com/api/token?reason=init&productType=web-player&totp=$totp&totpServer=unavailable&totpVer=${SpotifyTotp.VERSION}"
@@ -236,17 +250,18 @@ object SpotifyClient {
                     ?: (getTimeMillis() + 3600_000L)
 
                 if (!token.isNullOrEmpty()) {
-                    accessToken = token
-                    tokenExpiryMs = expiry
+                    anonymousAccessToken = token
+                    anonymousTokenExpiryMs = expiry
                     return@withContext token
                 }
             }
         } catch (e: Exception) {
-            // Ignore
+            println("[SpotifyClient] fetchAnonymousAccessToken failed: ${e.message}")
         }
         null
     }
 
+    /** Returns a valid user-authenticated token; never promotes an anonymous token to [accessToken]. */
     suspend fun ensureFreshToken(): String? = withContext(Dispatchers.IO) {
         val now = getTimeMillis()
         if (!accessToken.isNullOrEmpty() && now < (tokenExpiryMs - 60_000L)) {
@@ -260,8 +275,11 @@ object SpotifyClient {
             }
         }
 
-        fetchAnonymousAccessToken() ?: accessToken
+        accessToken
     }
+
+    /** Returns either a user token or an anonymous public catalog token (for search without login). */
+    suspend fun ensurePublicToken(): String? = ensureFreshToken() ?: fetchAnonymousAccessToken()
 
     private fun extractHighestResSpotifyImage(images: JsonArray?): String? {
         if (images == null || images.isEmpty()) return null
@@ -555,7 +573,7 @@ object SpotifyClient {
     }
 
     suspend fun searchSpotifyTracks(query: String, limit: Int = 20): List<Track> = withContext(Dispatchers.IO) {
-        val token = ensureFreshToken() ?: return@withContext emptyList()
+        val token = ensurePublicToken() ?: return@withContext emptyList()
         try {
             val resp = NetworkClient.client.get("https://api.spotify.com/v1/search?q=${query.encodeURLParameter()}&type=track&limit=$limit") {
                 header("Authorization", "Bearer $token")
@@ -730,6 +748,8 @@ object SpotifyClient {
         spDcCookie = null
         tokenExpiryMs = 0L
         userProfile = null
+        anonymousAccessToken = null
+        anonymousTokenExpiryMs = 0L
         lastError = null
     }
 }

@@ -1025,8 +1025,14 @@ object YouTubeAudioResolver {
                 header("Authorization", authHeader)
                 setBody(payload.toString())
             }
-            return@withContext resp.status.value in 200..299
+            if (resp.status.value !in 200..299) {
+                lastError = "YouTube Music rating HTTP ${resp.status.value}"
+                return@withContext false
+            }
+            return@withContext true
         } catch (e: Exception) {
+            lastError = "YouTube Music rating error: ${e.message}"
+            println("[YouTubeAudioResolver] rateSong failed: ${e.message}")
             return@withContext false
         }
     }
@@ -1042,14 +1048,12 @@ object YouTubeAudioResolver {
 
         val best = candidates.maxByOrNull { cand ->
             var score = 0
-            if (TrackIdMapper.normalizeTitle(cand.title).contains(cleanTitle) ||
-                cleanTitle.contains(TrackIdMapper.normalizeTitle(cand.title))
+            val candTitle = TrackIdMapper.normalizeTitle(cand.title)
+            if (cleanTitle.isNotEmpty() && candTitle.isNotEmpty() &&
+                (candTitle.contains(cleanTitle) || cleanTitle.contains(candTitle))
             ) score += 3
             if (cleanArtist.isNotEmpty() && TrackIdMapper.normalizeArtist(cand.artistNames) == cleanArtist) {
                 score += 3
-            }
-            if (track.durationSeconds > 0 && kotlin.math.abs(cand.durationSeconds - track.durationSeconds) <= 5) {
-                score += 1
             }
             score
         } ?: candidates.first()
